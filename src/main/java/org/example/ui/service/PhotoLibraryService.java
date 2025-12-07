@@ -19,8 +19,8 @@ public class PhotoLibraryService {
     private final List<PhotoItem> items;
 
     public PhotoLibraryService() {
-        this.items = new ArrayList<>(seed());
-        log.info("PhotoLibraryService initialise avec {} photos de demo", items.size());
+        this.items = new ArrayList<>();
+        log.info("PhotoLibraryService initialise sans contenu; en attente d'import ou de scan");
     }
 
     public synchronized List<PhotoItem> all() {
@@ -163,27 +163,6 @@ public class PhotoLibraryService {
         FAVORITES,
         RECENTS,
         ALBUMS
-    }
-
-    private List<PhotoItem> seed() {
-        List<PhotoItem> list = new ArrayList<>();
-        list.add(new PhotoItem(Path.of("demo/plage.jpg"), "Plage estivale", LocalDate.now().minusDays(5), "2.1 MB",
-                List.of("vacances", "famille"), List.of("Vacances", "Ete"), true));
-        list.add(new PhotoItem(Path.of("demo/anniversaire.jpg"), "Anniversaire", LocalDate.now().minusMonths(1), "3.4 MB",
-                List.of("famille", "gateau"), List.of("Famille"), false));
-        list.add(new PhotoItem(Path.of("demo/randonnee.jpg"), "Randonnee", LocalDate.now().minusMonths(4), "2.9 MB",
-                List.of("montagne", "sport"), List.of(), false));
-        list.add(new PhotoItem(Path.of("demo/chat.jpg"), "Chat endormi", LocalDate.now().minusDays(20), "1.2 MB",
-                List.of("animal", "maison"), List.of(), true));
-        list.add(new PhotoItem(Path.of("demo/concert.jpg"), "Concert", LocalDate.now().minusMonths(2), "4.5 MB",
-                List.of("musique", "amis"), List.of("Sorties"), false));
-        list.add(new PhotoItem(Path.of("demo/jardin.jpg"), "Jardin fleuri", LocalDate.now().minusDays(15), "2.0 MB",
-                List.of("nature", "couleurs"), List.of(), false));
-        list.add(new PhotoItem(Path.of("demo/souvenir-ete.jpg"), "Souvenir d'ete", LocalDate.now().minusMonths(6), "3.0 MB",
-                List.of("voyage", "soleil"), List.of("Voyages"), false));
-        list.add(new PhotoItem(Path.of("demo/noel.jpg"), "Noel", LocalDate.now().minusMonths(11), "5.2 MB",
-                List.of("famille", "fete"), List.of("Famille"), true));
-        return list;
     }
 
     private List<PhotoItem> enrichAlbums(List<PhotoItem> source) {
