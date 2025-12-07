@@ -69,6 +69,8 @@ public class MainView {
     private final ThumbnailService thumbnailService;
     private final ExportService exportService;
     private final TilePane grid;
+    private final Map<Path, PhotoCard> cardCache;
+    private final PauseTransition refreshThrottle;
     private final ToggleGroup filterGroup;
     private final TextField searchField;
     private final Label statusLabel;
@@ -85,6 +87,9 @@ public class MainView {
         this.thumbnailService = thumbnailService;
         this.exportService = exportService;
         this.grid = new TilePane();
+        this.cardCache = new LinkedHashMap<>();
+        this.refreshThrottle = new PauseTransition(Duration.millis(280));
+        this.refreshThrottle.setOnFinished(event -> refreshGrid());
         this.filterGroup = new ToggleGroup();
         this.searchField = new TextField();
         this.statusLabel = new Label("Aucune photo importee");
@@ -135,7 +140,7 @@ public class MainView {
         searchField.setPromptText("Rechercher par nom, tag ou date...");
         searchField.getStyleClass().add("search-field");
         searchField.setPrefHeight(40);
-        searchField.textProperty().addListener((obs, oldVal, newVal) -> refreshGrid());
+        searchField.textProperty().addListener((obs, oldVal, newVal) -> requestRefresh());
 
         HBox filters = new HBox(10,
                 buildFilterChip("Tous", Filter.ALL),
@@ -227,7 +232,7 @@ public class MainView {
                     .filter(t -> t.getUserData() == Filter.FAVORITES)
                     .findFirst()
                     .ifPresent(t -> t.setSelected(true));
-            refreshGrid();
+            requestRefresh();
         });
 
         hero.getChildren().addAll(text, spacer, secondary, primary);
@@ -254,57 +259,83 @@ public class MainView {
         return wrapper;
     }
 
-    private Node createPhotoCard(PhotoItem item) {
-        VBox card = new VBox(8);
-        card.getStyleClass().add("photo-card");
-        card.setPadding(new Insets(10));
-        card.setOnMouseClicked(event -> {
-            if (event.getClickCount() == 1) {
-                showPhotoDetails(item, card.getScene() == null ? null : card.getScene().getWindow());
-            }
-        });
+    private PhotoCard createPhotoCard(PhotoItem item) {
+        return new PhotoCard(item);
+    }
 
-        StackPane thumbWrapper = new StackPane();
-        thumbWrapper.getStyleClass().add("photo-thumb");
-        thumbWrapper.setMinHeight(140);
-        thumbWrapper.setMaxHeight(140);
+    private final class PhotoCard extends VBox {
+        private final ImageView imageView;
+        private final Label nameLabel;
+        private final Label infoLabel;
+        private final Button favoriteButton;
+        private PhotoItem currentItem;
 
-        ImageView imageView = new ImageView();
-        imageView.getStyleClass().add("photo-image");
-        imageView.setFitWidth(260);
-        imageView.setFitHeight(140);
-        imageView.setPreserveRatio(true);
-        imageView.setSmooth(true);
+        PhotoCard(PhotoItem item) {
+            super(8);
+            this.currentItem = item;
+            getStyleClass().add("photo-card");
+            setPadding(new Insets(10));
+            setUserData(item.path());
+            setOnMouseClicked(event -> {
+                if (event.getClickCount() == 1) {
+                    showPhotoDetails(currentItem, getScene() == null ? null : getScene().getWindow());
+                }
+            });
 
-        thumbWrapper.getChildren().add(imageView);
+            StackPane thumbWrapper = new StackPane();
+            thumbWrapper.getStyleClass().add("photo-thumb");
+            thumbWrapper.setMinHeight(140);
+            thumbWrapper.setMaxHeight(140);
 
-        if (Files.exists(item.path())) {
-            thumbnailService.load(item.path(), 320, imageView::setImage,
-                    ex -> log.warn("Miniature indisponible pour {}", item.path().getFileName()));
+            imageView = new ImageView();
+            imageView.getStyleClass().add("photo-image");
+            imageView.setFitWidth(260);
+            imageView.setFitHeight(140);
+            imageView.setPreserveRatio(true);
+            imageView.setSmooth(true);
+
+            thumbWrapper.getChildren().add(imageView);
+
+            nameLabel = new Label();
+            nameLabel.getStyleClass().add("photo-title");
+            infoLabel = new Label();
+            infoLabel.getStyleClass().add("photo-meta");
+
+            favoriteButton = new Button();
+            favoriteButton.getStyleClass().add("favorite-toggle");
+            favoriteButton.setOnAction(event -> {
+                boolean nowFavorite = photoService.toggleFavorite(currentItem.path());
+                updateFavorite(nowFavorite);
+                requestRefresh();
+                statusLabel.setText(nowFavorite ? "Ajoute aux favoris" : "Retire des favoris");
+                event.consume();
+            });
+
+            Region spacer = new Region();
+            HBox.setHgrow(spacer, Priority.ALWAYS);
+            HBox header = new HBox(8, nameLabel, spacer, favoriteButton);
+            header.setAlignment(Pos.CENTER_LEFT);
+
+            getChildren().addAll(thumbWrapper, header, infoLabel);
+            updateContent(item);
         }
 
-        Label name = new Label(item.title());
-        name.getStyleClass().add("photo-title");
-        String meta = item.date().toString() + " | " + item.sizeLabel() + (item.favorite() ? " | *" : "");
-        Label info = new Label(meta);
-        info.getStyleClass().add("photo-meta");
+        void updateContent(PhotoItem item) {
+            this.currentItem = item;
+            setUserData(item.path());
+            nameLabel.setText(item.title());
+            String meta = item.date().toString() + " | " + item.sizeLabel() + (item.favorite() ? " | *" : "");
+            infoLabel.setText(meta);
+            updateFavorite(item.favorite());
+            if (imageView.getImage() == null && Files.exists(item.path())) {
+                thumbnailService.load(item.path(), 320, imageView::setImage,
+                        ex -> log.warn("Miniature indisponible pour {}", item.path().getFileName()));
+            }
+        }
 
-        Button favoriteButton = new Button(item.favorite() ? "★" : "☆");
-        favoriteButton.getStyleClass().add("favorite-toggle");
-        favoriteButton.setOnAction(event -> {
-            boolean nowFavorite = photoService.toggleFavorite(item.path());
-            refreshGrid();
-            statusLabel.setText(nowFavorite ? "Ajoute aux favoris" : "Retire des favoris");
-            event.consume();
-        });
-
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox header = new HBox(8, name, spacer, favoriteButton);
-        header.setAlignment(Pos.CENTER_LEFT);
-
-        card.getChildren().addAll(thumbWrapper, header, info);
-        return card;
+        private void updateFavorite(boolean favorite) {
+            favoriteButton.setText(favorite ? "★" : "☆");
+        }
     }
 
     private void showPhotoDetails(PhotoItem item, Window owner) {
@@ -353,7 +384,7 @@ public class MainView {
         button.setMinHeight(32);
         button.setToggleGroup(filterGroup);
         button.setUserData(filter);
-        button.setOnAction(event -> refreshGrid());
+        button.setOnAction(event -> requestRefresh());
         if (filter == Filter.ALL) {
             button.setSelected(true);
         }
@@ -383,17 +414,20 @@ public class MainView {
                 .findFirst()
                 .ifPresent(toggle -> toggle.setSelected(true));
         log.info("Navigation vers {}", filter);
-        refreshGrid();
+        requestRefresh();
+    }
+
+    private void requestRefresh() {
+        refreshThrottle.playFromStart();
     }
 
     private void refreshGrid() {
         Filter activeFilter = getActiveFilter();
         String search = searchField.getText();
-        grid.getChildren().clear();
         List<PhotoItem> filtered = photoService.filter(search, activeFilter);
         if (filtered.isEmpty()) {
             boolean emptyLibrary = photoService.all().isEmpty();
-            grid.getChildren().add(buildEmptyState(emptyLibrary));
+            grid.getChildren().setAll(buildEmptyState(emptyLibrary));
             statusLabel.setText(emptyLibrary
                     ? "Aucune photo importee. Lancez un scan ou importez un dossier."
                     : "Aucun resultat pour ce filtre.");
@@ -401,8 +435,27 @@ public class MainView {
                     activeFilter, search == null ? "" : search.trim(), emptyLibrary);
             return;
         }
+        Set<Path> filteredPaths = filtered.stream()
+                .map(PhotoItem::path)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        grid.getChildren().removeIf(node -> {
+            Object data = node.getUserData();
+            return !(data instanceof Path path) || !filteredPaths.contains(path);
+        });
+
+        int index = 0;
         for (PhotoItem item : filtered) {
-            grid.getChildren().add(createPhotoCard(item));
+            PhotoCard card = cardCache.computeIfAbsent(item.path(), path -> createPhotoCard(item));
+            card.updateContent(item);
+            int currentIndex = grid.getChildren().indexOf(card);
+            if (currentIndex == -1) {
+                grid.getChildren().add(index, card);
+            } else if (currentIndex != index) {
+                grid.getChildren().remove(card);
+                grid.getChildren().add(index, card);
+            }
+            index++;
         }
         log.info("Grid rafraichie: {} elements (filtre={}, recherche='{}')",
                 grid.getChildren().size(), activeFilter, search == null ? "" : search.trim());
@@ -477,7 +530,7 @@ public class MainView {
         result.filter(selection -> !selection.name().isBlank() && !selection.photos().isEmpty())
                 .ifPresent(selection -> {
                     photoService.createAlbum(selection.name(), selection.photos());
-                    refreshGrid();
+                    requestRefresh();
                     statusLabel.setText("Album '" + selection.name() + "' cree");
                     showToast(owner, "Album '" + selection.name() + "' cree (" + selection.photos().size() + " photos)");
                 });
@@ -881,7 +934,7 @@ public class MainView {
         Optional<ScanSelection> selection = dialog == null ? Optional.empty() : dialog.showAndWait();
         selection.ifPresent(choice -> {
             PhotoLibraryService.AddResult result = photoService.addPhotos(choice.photos(), choice.album());
-            refreshGrid();
+            requestRefresh();
             String albumLabel = result.affectedAlbums().isEmpty()
                     ? "aucun album"
                     : String.join(", ", result.affectedAlbums());
@@ -1086,7 +1139,7 @@ public class MainView {
         task.setOnSucceeded(event -> {
             List<PhotoItem> items = task.getValue();
             photoService.replaceAll(items);
-            refreshGrid();
+            requestRefresh();
             statusLabel.setText(items.isEmpty()
                     ? "Aucune image trouvee dans le dossier"
                     : "Import reussi: " + items.size() + " photos");
