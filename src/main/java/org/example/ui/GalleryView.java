@@ -104,9 +104,12 @@ public class GalleryView {
           log.error("Echec lors de l'import", error);
           progressIndicator.setVisible(false);
           statusLabel.setText("Echec du scan");
-          showError(
-              "Import echoue",
-              "Le dossier n'a pas pu etre scanne. Verifiez le disque et reessayez.");
+          String message =
+              "Le dossier n'a pas pu etre scanne. Verifiez le disque et reessayez.";
+          if (error != null && error.getMessage() != null && !error.getMessage().isBlank()) {
+            message += " Details : " + error.getMessage();
+          }
+          showError("Import echoue", message);
         });
     Thread worker = new Thread(scanTask, "scan-worker");
     worker.setDaemon(true);

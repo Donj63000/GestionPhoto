@@ -1282,6 +1282,7 @@ public class MainView {
           if (progressDialog != null) {
             progressDialog.close();
           }
+          showScanError(owner, task.getException());
         });
 
     Thread thread = new Thread(task, "global-scan-task");
@@ -1387,6 +1388,23 @@ public class MainView {
               addResult.addedCount(),
               duplicateReport);
         });
+  }
+
+  private void showScanError(Window owner, Throwable error) {
+    Alert alert = new Alert(Alert.AlertType.ERROR);
+    alert.setTitle("Scan indisponible");
+    alert.setHeaderText("Impossible de parcourir les dossiers");
+    String base =
+        "Verifiez que le disque est accessible et que vous disposez des droits de lecture.";
+    if (error != null && error.getMessage() != null && !error.getMessage().isBlank()) {
+      alert.setContentText(base + " Details : " + error.getMessage());
+    } else {
+      alert.setContentText(base);
+    }
+    if (owner != null) {
+      alert.initOwner(owner);
+    }
+    alert.showAndWait();
   }
 
   private void applyDialogTheme(Dialog<?> dialog) {

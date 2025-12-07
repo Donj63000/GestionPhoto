@@ -22,6 +22,7 @@ public class Main extends Application {
 
   @Override
   public void start(Stage stage) {
+    LoggingSetup.prepare();
     Thread.setDefaultUncaughtExceptionHandler(
         (thread, throwable) ->
             log.error("Exception non capturee sur {}", thread.getName(), throwable));
