@@ -258,7 +258,7 @@ class MainViewTest {
         dialog.setOnShowing(event -> Platform.runLater(dialog::close));
 
         ScanSelectionTestView view = new ScanSelectionTestView(service, dialog);
-        runOnFxThread(() -> view.handleScanResults(null, scanned));
+        runOnFxThread(() -> view.handleScanResults(null, new PhotoFileScanner.ScanResult(scanned, List.of())));
 
         assertEquals(initialSize + 1, service.all().size(), "Only the selected new photo should be added");
         PhotoItem added = service.all().stream()

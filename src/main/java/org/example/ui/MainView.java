@@ -35,8 +35,8 @@ import javafx.stage.DirectoryChooser;
 import javafx.stage.Popup;
 import javafx.stage.Window;
 import javafx.util.Duration;
-import org.example.infra.PhotoFileScanner;
 import org.example.infra.ExportService;
+import org.example.infra.PhotoFileScanner;
 import org.example.infra.ThumbnailService;
 import org.example.ui.model.PhotoItem;
 import org.example.ui.service.PhotoLibraryService;
@@ -497,7 +497,7 @@ public class MainView {
             statusLabel.setText("Import annule");
             return;
         }
-        runScan(selectedDir.toPath());
+        runScan(owner, selectedDir.toPath());
     }
 
     protected DirectoryChooser createDirectoryChooser() {
@@ -622,6 +622,33 @@ public class MainView {
         PauseTransition delay = new PauseTransition(Duration.seconds(2.5));
         delay.setOnFinished(event -> popup.hide());
         delay.play();
+    }
+
+    private void showSkippedSummary(Window owner, List<Path> skipped) {
+        if (skipped == null || skipped.isEmpty()) {
+            return;
+        }
+        String summary = formatSkippedSummary(skipped);
+        String current = statusLabel.getText();
+        if (current == null || current.isBlank()) {
+            statusLabel.setText(summary);
+        } else {
+            statusLabel.setText(current + " • " + summary);
+        }
+        showToast(owner, summary);
+        log.warn("Dossiers ignores pendant le scan: {}", summary);
+    }
+
+    private String formatSkippedSummary(List<Path> skipped) {
+        int limit = 3;
+        String listed = skipped.stream()
+                .limit(limit)
+                .map(Path::toString)
+                .collect(Collectors.joining(", "));
+        if (skipped.size() > limit) {
+            listed += String.format(Locale.ROOT, " ... (+%d)", skipped.size() - limit);
+        }
+        return "Dossiers ignores (acces limite): " + listed;
     }
 
     private Comparator<PhotoItem> byMostRecent() {
@@ -843,13 +870,13 @@ public class MainView {
             return;
         }
 
-        Task<List<PhotoItem>> task = createGlobalScanTask(roots);
+        Task<PhotoFileScanner.ScanResult> task = createGlobalScanTask(roots);
         Dialog<Void> progressDialog = buildScanProgressDialog(owner, task);
 
         task.setOnSucceeded(event -> {
-            List<PhotoItem> items = task.getValue();
+            PhotoFileScanner.ScanResult result = task.getValue();
             if (!task.isCancelled()) {
-                handleScanResults(owner, items);
+                handleScanResults(owner, result);
             }
             if (progressDialog != null) {
                 progressDialog.close();
@@ -875,19 +902,20 @@ public class MainView {
         thread.start();
     }
 
-    private Task<List<PhotoItem>> createGlobalScanTask(List<Path> candidateRoots) {
+    private Task<PhotoFileScanner.ScanResult> createGlobalScanTask(List<Path> candidateRoots) {
         List<Path> roots = candidateRoots.stream()
                 .filter(this::isUsableDirectory)
                 .distinct()
                 .toList();
         return new Task<>() {
             @Override
-            protected List<PhotoItem> call() {
+            protected PhotoFileScanner.ScanResult call() {
                 if (roots.isEmpty()) {
                     updateMessage("Aucun dossier valide");
-                    return List.of();
+                    return PhotoFileScanner.ScanResult.empty();
                 }
                 List<PhotoItem> aggregated = new ArrayList<>();
+                List<Path> skippedDirectories = new ArrayList<>();
                 int total = roots.size();
                 int processed = 0;
                 int photosCount = 0;
@@ -900,12 +928,14 @@ public class MainView {
                     }
                     updateMessage("Scan de " + root.getFileName());
                     AtomicLong rootVisited = new AtomicLong(0);
-                    List<PhotoItem> rootItems = scanner.scan(List.of(root), this::isCancelled, count -> {
+                    PhotoFileScanner.ScanResult rootResult = scanner.scan(List.of(root), this::isCancelled, count -> {
                         long totalVisited = visited.get() + count;
                         rootVisited.set(count);
                         updateMessage(String.format(Locale.ROOT, "Scan de %s - fichiers parcourus: %d",
                                 root.getFileName(), totalVisited));
                     });
+                    List<PhotoItem> rootItems = rootResult.photos();
+                    skippedDirectories.addAll(rootResult.skippedDirectories());
                     photosCount += rootItems.size();
                     aggregated.addAll(rootItems);
                     processed++;
@@ -915,36 +945,39 @@ public class MainView {
                             photosCount, visited.get()));
                 }
                 aggregated.sort((a, b) -> b.date().compareTo(a.date()));
-                return aggregated;
+                return new PhotoFileScanner.ScanResult(aggregated, skippedDirectories);
             }
         };
     }
 
-    protected void handleScanResults(Window owner, List<PhotoItem> items) {
+    protected void handleScanResults(Window owner, PhotoFileScanner.ScanResult result) {
+        List<PhotoItem> items = result.photos();
         if (items == null || items.isEmpty()) {
             statusLabel.setText("Aucune image trouvee");
             showToast(owner, "Scan termine : aucune image detectee");
+            showSkippedSummary(owner, result.skippedDirectories());
             log.info("Scan global termine sans resultat");
             return;
         }
         long duplicatesDetected = items.stream()
                 .filter(item -> photoService.contains(item.path()))
                 .count();
+        showSkippedSummary(owner, result.skippedDirectories());
         Dialog<ScanSelection> dialog = buildScanSelectionDialog(owner, items);
         Optional<ScanSelection> selection = dialog == null ? Optional.empty() : dialog.showAndWait();
         selection.ifPresent(choice -> {
-            PhotoLibraryService.AddResult result = photoService.addPhotos(choice.photos(), choice.album());
+            PhotoLibraryService.AddResult addResult = photoService.addPhotos(choice.photos(), choice.album());
             requestRefresh();
-            String albumLabel = result.affectedAlbums().isEmpty()
+            String albumLabel = addResult.affectedAlbums().isEmpty()
                     ? "aucun album"
-                    : String.join(", ", result.affectedAlbums());
-            int duplicateReport = (int) Math.max(result.duplicateCount(), duplicatesDetected);
+                    : String.join(", ", addResult.affectedAlbums());
+            int duplicateReport = (int) Math.max(addResult.duplicateCount(), duplicatesDetected);
             String message = String.format(Locale.ROOT,
                     "%d photos ajoutees (%s). %d doublon(s) ignore(s).",
-                    result.addedCount(), albumLabel, duplicateReport);
+                    addResult.addedCount(), albumLabel, duplicateReport);
             statusLabel.setText(message);
             showToast(owner, message);
-            log.info("Scan global termine: {} ajouts, {} doublons", result.addedCount(), duplicateReport);
+            log.info("Scan global termine: {} ajouts, {} doublons", addResult.addedCount(), duplicateReport);
         });
     }
 
@@ -1124,11 +1157,11 @@ public class MainView {
         return path != null && Files.isDirectory(path) && Files.isReadable(path);
     }
 
-    private void runScan(Path root) {
+    private void runScan(Window owner, Path root) {
         statusLabel.setText("Scan en cours...");
-        Task<List<PhotoItem>> task = new Task<>() {
+        Task<PhotoFileScanner.ScanResult> task = new Task<>() {
             @Override
-            protected List<PhotoItem> call() {
+            protected PhotoFileScanner.ScanResult call() {
                 AtomicLong visited = new AtomicLong(0);
                 return scanner.scan(root, this::isCancelled, count -> {
                     visited.set(count);
@@ -1137,12 +1170,15 @@ public class MainView {
             }
         };
         task.setOnSucceeded(event -> {
-            List<PhotoItem> items = task.getValue();
+            PhotoFileScanner.ScanResult result = task.getValue();
+            List<PhotoItem> items = result.photos();
             photoService.replaceAll(items);
             requestRefresh();
-            statusLabel.setText(items.isEmpty()
+            String message = items.isEmpty()
                     ? "Aucune image trouvee dans le dossier"
-                    : "Import reussi: " + items.size() + " photos");
+                    : "Import reussi: " + items.size() + " photos";
+            statusLabel.setText(message);
+            showSkippedSummary(owner, result.skippedDirectories());
             log.info("Import termine depuis {}", root);
         });
         task.setOnFailed(event -> {
