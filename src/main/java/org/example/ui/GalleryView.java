@@ -19,10 +19,12 @@ import javafx.scene.layout.TilePane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
+import javafx.scene.image.ImageView;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Window;
 import org.example.core.Photo;
 import org.example.core.ScanService;
+import org.example.infra.ThumbnailService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,12 +33,14 @@ public class GalleryView {
 
   private final BorderPane root;
   private final ScanService scanService;
+  private final ThumbnailService thumbnailService;
   private final TilePane grid;
   private final Label statusLabel;
   private final ProgressIndicator progressIndicator;
 
   public GalleryView(ScanService scanService) {
     this.scanService = scanService;
+    this.thumbnailService = new ThumbnailService();
     this.root = new BorderPane();
     this.grid = new TilePane(12, 12);
     this.statusLabel = new Label("Aucune photo importee");
@@ -49,6 +53,10 @@ public class GalleryView {
 
   public BorderPane getRoot() {
     return root;
+  }
+
+  public void shutdown() {
+    thumbnailService.shutdown();
   }
 
   private Node buildHeader() {
@@ -125,17 +133,35 @@ public class GalleryView {
     placeholder.setArcWidth(12);
     placeholder.setArcHeight(12);
 
+    ImageView preview = new ImageView();
+    preview.setFitWidth(160);
+    preview.setFitHeight(100);
+    preview.setPreserveRatio(true);
+    preview.setSmooth(true);
+
+    StackPane thumbnail = new StackPane(placeholder, preview);
+    thumbnail.setPrefHeight(110);
+    thumbnail.setMinHeight(110);
+
     Label name = new Label(photo.fileName());
     name.setMaxWidth(140);
     name.setWrapText(true);
 
     Label meta = new Label(String.format("%d Ko", photo.sizeBytes() / 1024));
-    VBox content = new VBox(6, placeholder, name, meta);
+    VBox content = new VBox(6, thumbnail, name, meta);
     content.setPadding(new Insets(8));
     content.setAlignment(Pos.CENTER_LEFT);
 
     StackPane card = new StackPane(content);
     card.getStyleClass().add("photo-card");
+
+    if (photo.path() != null) {
+      thumbnailService.load(
+          photo.path(),
+          320,
+          preview::setImage,
+          ex -> log.warn("Miniature indisponible pour {}", photo.fileName()));
+    }
     return card;
   }
 
