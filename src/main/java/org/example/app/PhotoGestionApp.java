@@ -48,6 +48,8 @@ public class PhotoGestionApp extends Application {
 
   @Override
   public void stop() {
-    // Rien a liberer pour le moment
+    if (galleryView != null) {
+      galleryView.shutdown();
+    }
   }
 }
