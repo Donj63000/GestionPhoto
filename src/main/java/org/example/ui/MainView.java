@@ -4,6 +4,7 @@ import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
@@ -125,19 +126,26 @@ public class MainView {
         Label navTitle = new Label("Navigation");
         navTitle.getStyleClass().add("section-title");
 
-        VBox navButtons = new VBox(8,
-                createNavButton("Accueil"),
-                createNavButton("Photos"),
-                createNavButton("Albums"),
-                createNavButton("Favoris"),
-                createNavButton("A trier"));
+        Button homeButton = createNavButton("Accueil", () -> selectFilterAndRefresh(Filter.ALL));
+        Button photosButton = createNavButton("Photos", () -> selectFilterAndRefresh(Filter.ALL));
+        Button albumsButton = createNavButton("Albums", () -> selectFilterAndRefresh(Filter.ALBUMS));
+        Button favoritesButton = createNavButton("Favoris", () -> selectFilterAndRefresh(Filter.FAVORITES));
+        Button todoButton = createNavButton("A trier", () -> selectFilterAndRefresh(Filter.RECENTS));
+
+        VBox navButtons = new VBox(8, homeButton, photosButton, albumsButton, favoritesButton, todoButton);
 
         Label quickTitle = new Label("Actions rapides");
         quickTitle.getStyleClass().add("section-title");
-        VBox quickButtons = new VBox(8,
-                createSecondaryButton("Importer"),
-                createSecondaryButton("Creer un album"),
-                createSecondaryButton("Exporter"));
+        Button quickImport = createSecondaryButton("Importer");
+        quickImport.setOnAction(event -> launchImport(quickImport.getScene().getWindow()));
+
+        Button createAlbum = createSecondaryButton("Creer un album");
+        createAlbum.setOnAction(event -> handleCreateAlbum(createAlbum.getScene().getWindow()));
+
+        Button exportButton = createSecondaryButton("Exporter");
+        exportButton.setOnAction(event -> handleExport(exportButton.getScene().getWindow()));
+
+        VBox quickButtons = new VBox(8, quickImport, createAlbum, exportButton);
 
         sidebar.getChildren().addAll(navTitle, navButtons, quickTitle, quickButtons);
         return sidebar;
@@ -259,11 +267,12 @@ public class MainView {
         return button;
     }
 
-    private Button createNavButton(String label) {
+    private Button createNavButton(String label, Runnable action) {
         Button button = new Button(label);
         button.getStyleClass().add("nav-button");
         button.setAlignment(Pos.CENTER_LEFT);
         button.setMaxWidth(Double.MAX_VALUE);
+        button.setOnAction(event -> action.run());
         return button;
     }
 
@@ -273,6 +282,15 @@ public class MainView {
         button.setAlignment(Pos.CENTER_LEFT);
         button.setMaxWidth(Double.MAX_VALUE);
         return button;
+    }
+
+    private void selectFilterAndRefresh(Filter filter) {
+        filterGroup.getToggles().stream()
+                .filter(toggle -> toggle.getUserData() == filter)
+                .findFirst()
+                .ifPresent(toggle -> toggle.setSelected(true));
+        log.info("Navigation vers {}", filter);
+        refreshGrid();
     }
 
     private void refreshGrid() {
@@ -290,7 +308,7 @@ public class MainView {
     }
 
     private void launchImport(Window owner) {
-        DirectoryChooser chooser = new DirectoryChooser();
+        DirectoryChooser chooser = createDirectoryChooser();
         chooser.setTitle("Choisir un dossier de photos");
         File selectedDir = chooser.showDialog(owner);
         if (selectedDir == null) {
@@ -298,6 +316,32 @@ public class MainView {
             return;
         }
         runScan(selectedDir.toPath());
+    }
+
+    protected DirectoryChooser createDirectoryChooser() {
+        return new DirectoryChooser();
+    }
+
+    private void handleCreateAlbum(Window owner) {
+        log.info("Creation d'album demarree");
+        statusLabel.setText("Creation d'album en preparation");
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle("Creer un album");
+        alert.setHeaderText(null);
+        alert.setContentText("La creation d'album sera bientot disponible.");
+        alert.initOwner(owner);
+        alert.show();
+    }
+
+    private void handleExport(Window owner) {
+        log.info("Export demarre");
+        statusLabel.setText("Export en preparation");
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle("Exporter vos photos");
+        alert.setHeaderText(null);
+        alert.setContentText("L'export des photos sera lance depuis cette fenetre.");
+        alert.initOwner(owner);
+        alert.show();
     }
 
     private void runScan(Path root) {
