@@ -33,9 +33,9 @@ public class ExportService {
                 updateProgress(progressUpdater, i + 1, total);
                 continue;
             }
-            Path target = destination.resolve(source.getFileName().toString());
+            Path target = resolveTarget(destination, source.getFileName().toString());
             try {
-                Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+                Files.copy(source, target, StandardCopyOption.COPY_ATTRIBUTES);
                 exported++;
                 log.info("Photo copiee vers {}", target);
             } catch (IOException e) {
@@ -53,5 +53,29 @@ public class ExportService {
         if (progressUpdater != null && total > 0) {
             progressUpdater.accept(current / (double) total);
         }
+    }
+
+    private Path resolveTarget(Path destination, String originalName) throws IOException {
+        Path candidate = destination.resolve(originalName);
+        if (!Files.exists(candidate)) {
+            return candidate;
+        }
+
+        String baseName = originalName;
+        String extension = "";
+        int lastDot = originalName.lastIndexOf('.');
+        if (lastDot > 0) {
+            baseName = originalName.substring(0, lastDot);
+            extension = originalName.substring(lastDot);
+        }
+
+        int suffix = 1;
+        while (Files.exists(candidate)) {
+            String newName = String.format("%s (%d)%s", baseName, suffix, extension);
+            candidate = destination.resolve(newName);
+            suffix++;
+        }
+        log.info("Collision detectee pour {}. Nouveau nom attribue: {}", originalName, candidate.getFileName());
+        return candidate;
     }
 }
