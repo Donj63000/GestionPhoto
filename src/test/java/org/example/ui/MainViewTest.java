@@ -73,18 +73,24 @@ class MainViewTest {
     }
 
     @Test
-    void shouldRenderGridWithMockData() {
+    void shouldShowEmptyStateWhenNoPhotos() {
         MainView view = new MainView();
         // grid is the center scroll -> content VBox -> grid wrapper VBox -> TilePane
         TilePane grid = (TilePane) ((VBox) ((ScrollPane) view.getRoot().getCenter())
                 .getContent()).getChildren().get(1).lookup(".gallery-grid");
         assertNotNull(grid, "Grid should be present");
-        assertTrue(grid.getChildren().size() >= 1, "Grid should have items");
+        assertEquals(1, grid.getChildren().size(), "Grid should show an empty state placeholder");
+        Node placeholder = grid.getChildren().get(0);
+        assertTrue(placeholder.getStyleClass().contains("empty-state"), "Empty state should be styled");
+        Label title = (Label) ((VBox) placeholder).getChildren().get(0);
+        assertEquals("Aucune photo importee pour le moment", title.getText());
+        assertEquals("Aucune photo importee. Lancez un scan ou importez un dossier.", findStatusLabel(view.getRoot()).getText());
     }
 
     @Test
     void shouldFilterFavorites() {
-        MainView view = new MainView();
+        PhotoLibraryService service = serviceWithDemoData();
+        MainView view = new MainView(service, new PhotoFileScanner(), new ThumbnailService(), new ExportService());
         view.getRoot().lookupAll(".filter-chip").stream()
                 .filter(node -> node instanceof ToggleButton)
                 .map(node -> (ToggleButton) node)
@@ -96,14 +102,12 @@ class MainViewTest {
                 .getContent()).getChildren().get(1).lookup(".gallery-grid");
 
         assertTrue(grid.getChildren().size() >= 1, "Favorites grid should not be empty");
-
-        // crude check: favorites should be fewer or equal to total (8 in seed)
-        assertEquals(true, grid.getChildren().size() <= 8);
     }
 
     @Test
     void shouldFilterAlbums() {
-        MainView view = new MainView();
+        PhotoLibraryService service = serviceWithDemoData();
+        MainView view = new MainView(service, new PhotoFileScanner(), new ThumbnailService(), new ExportService());
         TilePane grid = (TilePane) ((VBox) ((ScrollPane) view.getRoot().getCenter())
                 .getContent()).getChildren().get(1).lookup(".gallery-grid");
         int total = grid.getChildren().size();
@@ -151,7 +155,7 @@ class MainViewTest {
 
     @Test
     void shouldShowDetailDialogOnCardClick() throws Exception {
-        DetailTestView view = new DetailTestView();
+        DetailTestView view = new DetailTestView(serviceWithDemoData());
         TilePane grid = extractGrid(view.getRoot());
         VBox card = (VBox) grid.getChildren().get(0);
 
@@ -166,7 +170,7 @@ class MainViewTest {
 
     @Test
     void shouldCreateAlbumFromDialogAndRefreshGrid() throws Exception {
-        PhotoLibraryService service = new PhotoLibraryService();
+        PhotoLibraryService service = serviceWithDemoData();
         List<PhotoItem> selection = service.filter("", PhotoLibraryService.Filter.ALL)
                 .subList(0, Math.min(2, service.all().size()));
         AlbumSelection albumSelection = new AlbumSelection("Album Test", selection);
@@ -207,7 +211,7 @@ class MainViewTest {
 
     @Test
     void shouldToggleFavoriteAndRefreshFilters() throws Exception {
-        PhotoLibraryService service = new PhotoLibraryService();
+        PhotoLibraryService service = serviceWithDemoData();
         PhotoItem target = service.all().stream()
                 .filter(item -> !item.favorite())
                 .findFirst()
@@ -241,7 +245,7 @@ class MainViewTest {
 
     @Test
     void shouldApplyPartialSelectionToNewAlbum() throws Exception {
-        PhotoLibraryService service = new PhotoLibraryService();
+        PhotoLibraryService service = serviceWithDemoData();
         int initialSize = service.all().size();
 
         List<PhotoItem> scanned = List.of(
@@ -282,6 +286,33 @@ class MainViewTest {
     private static TilePane extractGrid(Node root) {
         return (TilePane) ((VBox) ((ScrollPane) root.lookup(".content-scroll")).getContent())
                 .getChildren().get(1).lookup(".gallery-grid");
+    }
+
+    private static PhotoLibraryService serviceWithDemoData() {
+        PhotoLibraryService service = new PhotoLibraryService();
+        service.replaceAll(demoPhotos());
+        return service;
+    }
+
+    private static List<PhotoItem> demoPhotos() {
+        return List.of(
+                new PhotoItem(Path.of("demo/plage.jpg"), "Plage estivale", LocalDate.now().minusDays(5), "2.1 MB",
+                        List.of("vacances", "famille"), List.of("Vacances", "Ete"), true),
+                new PhotoItem(Path.of("demo/anniversaire.jpg"), "Anniversaire", LocalDate.now().minusMonths(1), "3.4 MB",
+                        List.of("famille", "gateau"), List.of("Famille"), false),
+                new PhotoItem(Path.of("demo/randonnee.jpg"), "Randonnee", LocalDate.now().minusMonths(4), "2.9 MB",
+                        List.of("montagne", "sport"), List.of(), false),
+                new PhotoItem(Path.of("demo/chat.jpg"), "Chat endormi", LocalDate.now().minusDays(20), "1.2 MB",
+                        List.of("animal", "maison"), List.of(), true),
+                new PhotoItem(Path.of("demo/concert.jpg"), "Concert", LocalDate.now().minusMonths(2), "4.5 MB",
+                        List.of("musique", "amis"), List.of("Sorties"), false),
+                new PhotoItem(Path.of("demo/jardin.jpg"), "Jardin fleuri", LocalDate.now().minusDays(15), "2.0 MB",
+                        List.of("nature", "couleurs"), List.of(), false),
+                new PhotoItem(Path.of("demo/souvenir-ete.jpg"), "Souvenir d'ete", LocalDate.now().minusMonths(6), "3.0 MB",
+                        List.of("voyage", "soleil"), List.of("Voyages"), false),
+                new PhotoItem(Path.of("demo/noel.jpg"), "Noel", LocalDate.now().minusMonths(11), "5.2 MB",
+                        List.of("famille", "fete"), List.of("Famille"), true)
+        );
     }
 
     private static String getSelectedFilterLabel(MainView view) {
@@ -353,6 +384,10 @@ class MainViewTest {
     private static class DetailTestView extends MainView {
         final AtomicBoolean detailShown = new AtomicBoolean(false);
         PhotoItem capturedItem;
+
+        DetailTestView(PhotoLibraryService service) {
+            super(service, new PhotoFileScanner(), new ThumbnailService(), new ExportService());
+        }
 
         @Override
         protected Dialog<Void> buildPhotoDetailDialog(PhotoItem item, Window owner) {

@@ -86,7 +86,7 @@ public class MainView {
         this.grid = new TilePane();
         this.filterGroup = new ToggleGroup();
         this.searchField = new TextField();
-        this.statusLabel = new Label("Pret");
+        this.statusLabel = new Label("Aucune photo importee");
         root.getStyleClass().add("app-root");
         root.setTop(buildHeader());
         root.setLeft(buildSidebar());
@@ -389,12 +389,44 @@ public class MainView {
         Filter activeFilter = getActiveFilter();
         String search = searchField.getText();
         grid.getChildren().clear();
-        for (PhotoItem item : photoService.filter(search, activeFilter)) {
+        List<PhotoItem> filtered = photoService.filter(search, activeFilter);
+        if (filtered.isEmpty()) {
+            boolean emptyLibrary = photoService.all().isEmpty();
+            grid.getChildren().add(buildEmptyState(emptyLibrary));
+            statusLabel.setText(emptyLibrary
+                    ? "Aucune photo importee. Lancez un scan ou importez un dossier."
+                    : "Aucun resultat pour ce filtre.");
+            log.info("Grid rafraichie: aucun element (filtre={}, recherche='{}', bibliotheque vide={})",
+                    activeFilter, search == null ? "" : search.trim(), emptyLibrary);
+            return;
+        }
+        for (PhotoItem item : filtered) {
             grid.getChildren().add(createPhotoCard(item));
         }
         log.info("Grid rafraichie: {} elements (filtre={}, recherche='{}')",
                 grid.getChildren().size(), activeFilter, search == null ? "" : search.trim());
-        statusLabel.setText(grid.getChildren().isEmpty() ? "Aucun resultat" : "Affichage: " + grid.getChildren().size() + " photos");
+        statusLabel.setText("Affichage: " + grid.getChildren().size() + " photos");
+    }
+
+    private Node buildEmptyState(boolean emptyLibrary) {
+        VBox emptyBox = new VBox(8);
+        emptyBox.setAlignment(Pos.CENTER);
+        emptyBox.setPadding(new Insets(24));
+        emptyBox.getStyleClass().add("empty-state");
+
+        Label title = new Label(emptyLibrary
+                ? "Aucune photo importee pour le moment"
+                : "Aucun resultat ne correspond a ce filtre");
+        title.getStyleClass().add("section-title");
+
+        Label subtitle = new Label(emptyLibrary
+                ? "Cliquez sur 'Importer' ou lancez un scan pour ajouter vos premiers souvenirs."
+                : "Ajustez la recherche ou choisissez un autre filtre.");
+        subtitle.getStyleClass().add("subtitle");
+        subtitle.setWrapText(true);
+
+        emptyBox.getChildren().addAll(title, subtitle);
+        return emptyBox;
     }
 
     private Filter getActiveFilter() {
