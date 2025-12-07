@@ -1,6 +1,7 @@
 package org.example.ui;
 
 import javafx.animation.PauseTransition;
+import javafx.collections.FXCollections;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -12,6 +13,7 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.ButtonBar.ButtonData;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.CheckBox;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Hyperlink;
 import javafx.scene.control.Label;
@@ -47,11 +49,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.LinkedHashSet;
 import java.util.stream.Collectors;
 
 public class MainView {
@@ -533,6 +538,29 @@ public class MainView {
         delay.play();
     }
 
+    private Comparator<PhotoItem> byMostRecent() {
+        return Comparator.comparing(PhotoItem::date).reversed()
+                .thenComparing(PhotoItem::title, String.CASE_INSENSITIVE_ORDER);
+    }
+
+    static class ScanSelection {
+        private final List<PhotoItem> photos;
+        private final String album;
+
+        ScanSelection(List<PhotoItem> photos, String album) {
+            this.photos = photos == null ? List.of() : List.copyOf(photos);
+            this.album = album == null ? "" : album;
+        }
+
+        public List<PhotoItem> photos() {
+            return photos;
+        }
+
+        public String album() {
+            return album;
+        }
+    }
+
     static class AlbumSelection {
         private final String name;
         private final List<PhotoItem> photos;
@@ -735,13 +763,7 @@ public class MainView {
         task.setOnSucceeded(event -> {
             List<PhotoItem> items = task.getValue();
             if (!task.isCancelled()) {
-                photoService.replaceAll(items);
-                refreshGrid();
-                statusLabel.setText(items.isEmpty()
-                        ? "Aucune image trouvee"
-                        : items.size() + " photos trouvees");
-                showToast(owner, "Scan termine : " + items.size() + " images");
-                log.info("Scan global termine avec {} photos", items.size());
+                handleScanResults(owner, items);
             }
             if (progressDialog != null) {
                 progressDialog.close();
@@ -801,6 +823,137 @@ public class MainView {
                 return aggregated;
             }
         };
+    }
+
+    protected void handleScanResults(Window owner, List<PhotoItem> items) {
+        if (items == null || items.isEmpty()) {
+            statusLabel.setText("Aucune image trouvee");
+            showToast(owner, "Scan termine : aucune image detectee");
+            log.info("Scan global termine sans resultat");
+            return;
+        }
+        long duplicatesDetected = items.stream()
+                .filter(item -> photoService.contains(item.path()))
+                .count();
+        Dialog<ScanSelection> dialog = buildScanSelectionDialog(owner, items);
+        Optional<ScanSelection> selection = dialog == null ? Optional.empty() : dialog.showAndWait();
+        selection.ifPresent(choice -> {
+            PhotoLibraryService.AddResult result = photoService.addPhotos(choice.photos(), choice.album());
+            refreshGrid();
+            String albumLabel = result.affectedAlbums().isEmpty()
+                    ? "aucun album"
+                    : String.join(", ", result.affectedAlbums());
+            int duplicateReport = (int) Math.max(result.duplicateCount(), duplicatesDetected);
+            String message = String.format(Locale.ROOT,
+                    "%d photos ajoutees (%s). %d doublon(s) ignore(s).",
+                    result.addedCount(), albumLabel, duplicateReport);
+            statusLabel.setText(message);
+            showToast(owner, message);
+            log.info("Scan global termine: {} ajouts, {} doublons", result.addedCount(), duplicateReport);
+        });
+    }
+
+    protected Dialog<ScanSelection> buildScanSelectionDialog(Window owner, List<PhotoItem> items) {
+        Dialog<ScanSelection> dialog = new Dialog<>();
+        dialog.setTitle("Selection des photos");
+        dialog.setHeaderText("Choisissez les photos a ajouter et l'album cible");
+        if (owner != null) {
+            dialog.initOwner(owner);
+        }
+
+        ButtonType validate = new ButtonType("Ajouter", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(validate, ButtonType.CANCEL);
+
+        TextField filterField = new TextField();
+        filterField.setPromptText("Filtrer par nom ou album");
+        ChoiceBox<String> sortChoice = new ChoiceBox<>(FXCollections.observableArrayList("Plus recent", "Nom A-Z"));
+        sortChoice.getSelectionModel().selectFirst();
+
+        ComboBox<String> albumSelector = new ComboBox<>(FXCollections.observableArrayList(photoService.albumNames()));
+        albumSelector.setPromptText("Album existant");
+        TextField newAlbumField = new TextField();
+        newAlbumField.setPromptText("Ou nommez un nouvel album");
+
+        List<PhotoItem> sorted = new ArrayList<>(items);
+        sorted.sort(byMostRecent());
+
+        Map<PhotoItem, CheckBox> checkBoxes = new LinkedHashMap<>();
+        for (PhotoItem item : sorted) {
+            boolean duplicate = photoService.contains(item.path());
+            CheckBox box = new CheckBox(item.title() + " • " + item.date());
+            box.setSelected(!duplicate);
+            box.setDisable(duplicate);
+            box.setUserData(item);
+            checkBoxes.put(item, box);
+        }
+
+        VBox itemsBox = new VBox(6);
+        ScrollPane scrollPane = new ScrollPane(itemsBox);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setPrefViewportHeight(Math.min(320, 30 * checkBoxes.size() + 20));
+
+        Label duplicateLabel = new Label();
+
+        Runnable refreshList = () -> {
+            Comparator<PhotoItem> comparator = sortChoice.getSelectionModel().getSelectedIndex() == 1
+                    ? Comparator.comparing(PhotoItem::title, String.CASE_INSENSITIVE_ORDER)
+                    : byMostRecent();
+            String filter = filterField.getText() == null ? "" : filterField.getText().trim().toLowerCase(Locale.ROOT);
+            List<PhotoItem> filtered = sorted.stream()
+                    .filter(item -> filter.isEmpty()
+                            || item.title().toLowerCase(Locale.ROOT).contains(filter)
+                            || item.albums().stream().anyMatch(alb -> alb.toLowerCase(Locale.ROOT).contains(filter)))
+                    .sorted(comparator)
+                    .toList();
+            itemsBox.getChildren().setAll(filtered.stream()
+                    .map(checkBoxes::get)
+                    .toList());
+        };
+
+        filterField.textProperty().addListener((obs, oldVal, newVal) -> refreshList.run());
+        sortChoice.getSelectionModel().selectedIndexProperty().addListener((obs, oldVal, newVal) -> refreshList.run());
+        refreshList.run();
+
+        Node validateButton = dialog.getDialogPane().lookupButton(validate);
+        Runnable updateValidateState = () -> {
+            boolean hasSelection = checkBoxes.values().stream()
+                    .anyMatch(cb -> cb.isSelected() && !cb.isDisable());
+            if (validateButton != null) {
+                validateButton.setDisable(!hasSelection);
+            }
+        };
+        checkBoxes.values().forEach(cb -> cb.selectedProperty().addListener((obs, oldVal, newVal) -> updateValidateState.run()));
+        updateValidateState.run();
+
+        long duplicates = checkBoxes.values().stream().filter(CheckBox::isDisable).count();
+        duplicateLabel.setText(duplicates == 0
+                ? "Aucun doublon detecte"
+                : duplicates + " doublon(s) detecte(s) : ils seront ignores");
+
+        VBox content = new VBox(10,
+                new Label("Filtrer et trier"),
+                new HBox(8, filterField, sortChoice),
+                new Label("Album cible"),
+                new HBox(8, albumSelector, newAlbumField),
+                duplicateLabel,
+                scrollPane);
+        content.setPadding(new Insets(10));
+        dialog.getDialogPane().setContent(content);
+
+        dialog.setResultConverter(button -> {
+            if (button == validate) {
+                List<PhotoItem> selection = checkBoxes.values().stream()
+                        .filter(cb -> cb.isSelected() && cb.getUserData() instanceof PhotoItem)
+                        .map(cb -> (PhotoItem) cb.getUserData())
+                        .toList();
+                String album = newAlbumField.getText() != null && !newAlbumField.getText().trim().isEmpty()
+                        ? newAlbumField.getText().trim()
+                        : albumSelector.getValue() == null ? "" : albumSelector.getValue().trim();
+                return new ScanSelection(selection, album);
+            }
+            return null;
+        });
+        return dialog;
     }
 
     private Dialog<Void> buildScanProgressDialog(Window owner, Task<?> task) {
