@@ -1,9 +1,5 @@
 package org.example.infra;
 
-import org.example.ui.model.PhotoItem;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -11,71 +7,80 @@ import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
+import org.example.ui.model.PhotoItem;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ExportService {
-    private static final Logger log = LoggerFactory.getLogger(ExportService.class);
+  private static final Logger log = LoggerFactory.getLogger(ExportService.class);
 
-    public int exportPhotos(List<PhotoItem> photos, Path destination, Consumer<Double> progressUpdater) throws IOException {
-        Objects.requireNonNull(destination, "destination");
-        if (photos == null || photos.isEmpty()) {
-            log.warn("Export ignore: aucune photo a copier");
-            return 0;
-        }
-        Files.createDirectories(destination);
+  public int exportPhotos(
+      List<PhotoItem> photos, Path destination, Consumer<Double> progressUpdater)
+      throws IOException {
+    Objects.requireNonNull(destination, "destination");
+    if (photos == null || photos.isEmpty()) {
+      log.warn("Export ignore: aucune photo a copier");
+      return 0;
+    }
+    Files.createDirectories(destination);
 
-        int total = photos.size();
-        int exported = 0;
-        for (int i = 0; i < total; i++) {
-            PhotoItem item = photos.get(i);
-            Path source = item.path();
-            if (!Files.exists(source)) {
-                log.warn("Fichier source introuvable: {}", source);
-                updateProgress(progressUpdater, i + 1, total);
-                continue;
-            }
-            Path target = resolveTarget(destination, source.getFileName().toString());
-            try {
-                Files.copy(source, target, StandardCopyOption.COPY_ATTRIBUTES);
-                exported++;
-                log.info("Photo copiee vers {}", target);
-            } catch (IOException e) {
-                log.error("Echec de copie {} vers {}", source, target, e);
-                throw new IOException("Impossible de copier '" + source.getFileName() + "' : " + e.getMessage(), e);
-            }
-            updateProgress(progressUpdater, i + 1, total);
-        }
-        updateProgress(progressUpdater, total, total);
-        log.info("Export termine: {} fichiers copies vers {}", exported, destination);
-        return exported;
+    int total = photos.size();
+    int exported = 0;
+    for (int i = 0; i < total; i++) {
+      PhotoItem item = photos.get(i);
+      Path source = item.path();
+      if (!Files.exists(source)) {
+        log.warn("Fichier source introuvable: {}", source);
+        updateProgress(progressUpdater, i + 1, total);
+        continue;
+      }
+      Path target = resolveTarget(destination, source.getFileName().toString());
+      try {
+        Files.copy(source, target, StandardCopyOption.COPY_ATTRIBUTES);
+        exported++;
+        log.info("Photo copiee vers {}", target);
+      } catch (IOException e) {
+        log.error("Echec de copie {} vers {}", source, target, e);
+        throw new IOException(
+            "Impossible de copier '" + source.getFileName() + "' : " + e.getMessage(), e);
+      }
+      updateProgress(progressUpdater, i + 1, total);
+    }
+    updateProgress(progressUpdater, total, total);
+    log.info("Export termine: {} fichiers copies vers {}", exported, destination);
+    return exported;
+  }
+
+  private void updateProgress(Consumer<Double> progressUpdater, int current, int total) {
+    if (progressUpdater != null && total > 0) {
+      progressUpdater.accept(current / (double) total);
+    }
+  }
+
+  private Path resolveTarget(Path destination, String originalName) throws IOException {
+    Path candidate = destination.resolve(originalName);
+    if (!Files.exists(candidate)) {
+      return candidate;
     }
 
-    private void updateProgress(Consumer<Double> progressUpdater, int current, int total) {
-        if (progressUpdater != null && total > 0) {
-            progressUpdater.accept(current / (double) total);
-        }
+    String baseName = originalName;
+    String extension = "";
+    int lastDot = originalName.lastIndexOf('.');
+    if (lastDot > 0) {
+      baseName = originalName.substring(0, lastDot);
+      extension = originalName.substring(lastDot);
     }
 
-    private Path resolveTarget(Path destination, String originalName) throws IOException {
-        Path candidate = destination.resolve(originalName);
-        if (!Files.exists(candidate)) {
-            return candidate;
-        }
-
-        String baseName = originalName;
-        String extension = "";
-        int lastDot = originalName.lastIndexOf('.');
-        if (lastDot > 0) {
-            baseName = originalName.substring(0, lastDot);
-            extension = originalName.substring(lastDot);
-        }
-
-        int suffix = 1;
-        while (Files.exists(candidate)) {
-            String newName = String.format("%s (%d)%s", baseName, suffix, extension);
-            candidate = destination.resolve(newName);
-            suffix++;
-        }
-        log.info("Collision detectee pour {}. Nouveau nom attribue: {}", originalName, candidate.getFileName());
-        return candidate;
+    int suffix = 1;
+    while (Files.exists(candidate)) {
+      String newName = String.format("%s (%d)%s", baseName, suffix, extension);
+      candidate = destination.resolve(newName);
+      suffix++;
     }
+    log.info(
+        "Collision detectee pour {}. Nouveau nom attribue: {}",
+        originalName,
+        candidate.getFileName());
+    return candidate;
+  }
 }
