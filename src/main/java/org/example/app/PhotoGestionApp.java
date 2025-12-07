@@ -2,14 +2,10 @@ package org.example.app;
 
 import javafx.application.Application;
 import javafx.scene.Scene;
-import javafx.scene.input.KeyCode;
-import javafx.scene.input.KeyEvent;
 import javafx.stage.Stage;
-import org.example.ui.MainView;
-import org.example.infra.ExportService;
-import org.example.infra.PhotoFileScanner;
-import org.example.infra.ThumbnailService;
-import org.example.ui.service.PhotoLibraryService;
+import org.example.core.ScanService;
+import org.example.infra.FileSystemGateway;
+import org.example.ui.GalleryView;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,8 +13,7 @@ import java.net.URL;
 
 public class PhotoGestionApp extends Application {
     private static final Logger log = LoggerFactory.getLogger(PhotoGestionApp.class);
-    private ThumbnailService thumbnailService;
-    private MainView mainView;
+    private GalleryView galleryView;
 
     public static void launchApp(String[] args) {
         launch(args);
@@ -29,9 +24,10 @@ public class PhotoGestionApp extends Application {
         Thread.setDefaultUncaughtExceptionHandler(
                 (thread, throwable) -> log.error("Exception non capturee sur {}", thread.getName(), throwable));
 
-        thumbnailService = new ThumbnailService();
-        mainView = new MainView(new PhotoLibraryService(), new PhotoFileScanner(), thumbnailService, new ExportService());
-        Scene scene = new Scene(mainView.getRoot(), 1200, 780);
+        FileSystemGateway gateway = new FileSystemGateway();
+        ScanService scanService = new ScanService(gateway);
+        galleryView = new GalleryView(scanService);
+        Scene scene = new Scene(galleryView.getRoot(), 960, 640);
 
         URL themeUrl = getClass().getResource("/ui/theme.css");
         if (themeUrl != null) {
@@ -40,19 +36,11 @@ public class PhotoGestionApp extends Application {
             log.warn("Feuille de style ui/theme.css introuvable");
         }
 
-        stage.setTitle("Photos Gestion - Accueil");
+        stage.setTitle("Photos Gestion - Import");
         stage.setScene(scene);
-        stage.setMinWidth(960);
-        stage.setMinHeight(640);
+        stage.setMinWidth(800);
+        stage.setMinHeight(560);
 
-        scene.addEventHandler(KeyEvent.KEY_PRESSED, event -> {
-            if (event.getCode() == KeyCode.F1) {
-                log.info("Raccourci clavier Aide (F1) declenche");
-                mainView.showHelpDialog(stage);
-                event.consume();
-            }
-        });
-        stage.setOnCloseRequest(event -> shutdownThumbnailService());
         stage.show();
 
         log.info("UI principale initialisee");
@@ -60,12 +48,6 @@ public class PhotoGestionApp extends Application {
 
     @Override
     public void stop() {
-        shutdownThumbnailService();
-    }
-
-    private void shutdownThumbnailService() {
-        if (thumbnailService != null) {
-            thumbnailService.shutdown();
-        }
+        // Rien a liberer pour le moment
     }
 }
