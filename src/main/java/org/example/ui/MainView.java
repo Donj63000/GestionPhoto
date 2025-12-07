@@ -9,10 +9,12 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Hyperlink;
 import javafx.scene.control.Label;
+import javafx.scene.control.ProgressBar;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
@@ -28,7 +30,9 @@ import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Popup;
 import javafx.stage.Window;
+import javafx.util.Duration;
 import org.example.infra.PhotoFileScanner;
+import org.example.infra.ExportService;
 import org.example.infra.ThumbnailService;
 import org.example.ui.model.PhotoItem;
 import org.example.ui.service.PhotoLibraryService;
@@ -42,7 +46,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import javafx.util.Duration;
 
 public class MainView {
     private static final Logger log = LoggerFactory.getLogger(MainView.class);
@@ -51,20 +54,23 @@ public class MainView {
     private final PhotoLibraryService photoService;
     private final PhotoFileScanner scanner;
     private final ThumbnailService thumbnailService;
+    private final ExportService exportService;
     private final TilePane grid;
     private final ToggleGroup filterGroup;
     private final TextField searchField;
     private final Label statusLabel;
 
     public MainView() {
-        this(new PhotoLibraryService(), new PhotoFileScanner(), new ThumbnailService());
+        this(new PhotoLibraryService(), new PhotoFileScanner(), new ThumbnailService(), new ExportService());
     }
 
-    public MainView(PhotoLibraryService photoService, PhotoFileScanner scanner, ThumbnailService thumbnailService) {
+    public MainView(PhotoLibraryService photoService, PhotoFileScanner scanner,
+            ThumbnailService thumbnailService, ExportService exportService) {
         this.root = new BorderPane();
         this.photoService = photoService;
         this.scanner = scanner;
         this.thumbnailService = thumbnailService;
+        this.exportService = exportService;
         this.grid = new TilePane();
         this.filterGroup = new ToggleGroup();
         this.searchField = new TextField();
@@ -325,7 +331,7 @@ public class MainView {
     private void launchImport(Window owner) {
         DirectoryChooser chooser = createDirectoryChooser();
         chooser.setTitle("Choisir un dossier de photos");
-        File selectedDir = chooser.showDialog(owner);
+        File selectedDir = showDirectoryDialog(owner, chooser);
         if (selectedDir == null) {
             statusLabel.setText("Import annule");
             return;
@@ -335,6 +341,10 @@ public class MainView {
 
     protected DirectoryChooser createDirectoryChooser() {
         return new DirectoryChooser();
+    }
+
+    protected File showDirectoryDialog(Window owner, DirectoryChooser chooser) {
+        return chooser.showDialog(owner);
     }
 
     private void handleCreateAlbum(Window owner) {
@@ -473,13 +483,131 @@ public class MainView {
 
     private void handleExport(Window owner) {
         log.info("Export demarre");
-        statusLabel.setText("Export en preparation");
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle("Exporter vos photos");
-        alert.setHeaderText(null);
-        alert.setContentText("L'export des photos sera lance depuis cette fenetre.");
-        alert.initOwner(owner);
-        alert.show();
+        List<PhotoItem> selection = photoService.filter(searchField.getText(), getActiveFilter());
+        if (selection.isEmpty()) {
+            statusLabel.setText("Aucune photo a exporter");
+            Alert emptyAlert = new Alert(Alert.AlertType.INFORMATION);
+            emptyAlert.setTitle("Pas de photos a exporter");
+            emptyAlert.setHeaderText(null);
+            emptyAlert.setContentText("Aucune photo n'est disponible avec le filtre actuel.");
+            emptyAlert.initOwner(owner);
+            emptyAlert.show();
+            return;
+        }
+
+        DirectoryChooser chooser = createDirectoryChooser();
+        chooser.setTitle("Choisir le dossier de destination");
+        File destination = showDirectoryDialog(owner, chooser);
+        if (destination == null) {
+            statusLabel.setText("Export annule");
+            return;
+        }
+
+        ExportFormat format = promptExportFormat(owner);
+        if (format == null) {
+            statusLabel.setText("Export annule");
+            return;
+        }
+
+        statusLabel.setText("Export en cours...");
+        startExportTask(selection, destination.toPath(), format, owner);
+    }
+
+    private ExportFormat promptExportFormat(Window owner) {
+        Dialog<ExportFormat> dialog = new Dialog<>();
+        dialog.setTitle("Format d'export");
+        dialog.setHeaderText("Choisissez comment copier vos photos");
+        dialog.initOwner(owner);
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        ChoiceBox<ExportFormat> choiceBox = new ChoiceBox<>();
+        choiceBox.getItems().addAll(ExportFormat.values());
+        choiceBox.getSelectionModel().select(ExportFormat.SIMPLE_COPY);
+
+        VBox content = new VBox(10,
+                new Label("Format"),
+                choiceBox,
+                new Label("Copie simple : duplique les fichiers dans le dossier cible"));
+        content.setPadding(new Insets(10));
+        dialog.getDialogPane().setContent(content);
+
+        dialog.setResultConverter(buttonType -> buttonType == ButtonType.OK
+                ? choiceBox.getValue()
+                : null);
+        return dialog.showAndWait().orElse(null);
+    }
+
+    private void startExportTask(List<PhotoItem> selection, Path destination, ExportFormat format, Window owner) {
+        Task<Integer> task = new Task<>() {
+            @Override
+            protected Integer call() throws Exception {
+                updateMessage("Preparation de l'export...");
+                return exportService.exportPhotos(selection, destination, progress -> {
+                    updateProgress(progress, 1.0);
+                    updateMessage(String.format("%.0f%%", progress * 100));
+                });
+            }
+        };
+
+        Dialog<Void> progressDialog = new Dialog<>();
+        progressDialog.setTitle("Export en cours");
+        progressDialog.setHeaderText("Vos photos sont en cours de copie");
+        progressDialog.initOwner(owner);
+        progressDialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+        Button closeButton = (Button) progressDialog.getDialogPane().lookupButton(ButtonType.CLOSE);
+        closeButton.setDisable(true);
+
+        ProgressBar progressBar = new ProgressBar();
+        progressBar.setMinWidth(280);
+        progressBar.progressProperty().bind(task.progressProperty());
+        Label progressLabel = new Label("Debut de l'export...");
+        progressLabel.textProperty().bind(task.messageProperty());
+
+        VBox content = new VBox(10, progressLabel, progressBar);
+        content.setPadding(new Insets(12));
+        progressDialog.getDialogPane().setContent(content);
+        progressDialog.show();
+
+        task.setOnSucceeded(event -> {
+            int copied = task.getValue();
+            statusLabel.setText("Export termine : " + copied + " fichiers copies");
+            showToast(owner, "Export termine : " + copied + " fichiers");
+            closeButton.setDisable(false);
+            progressDialog.close();
+            log.info("Export reussi vers {} avec format {}", destination, format);
+        });
+        task.setOnFailed(event -> {
+            closeButton.setDisable(false);
+            progressDialog.close();
+            Throwable error = task.getException();
+            log.error("Export echoue vers {}", destination, error);
+            statusLabel.setText("Export echoue");
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle("Export echoue");
+            alert.setHeaderText("Impossible de copier les photos");
+            alert.setContentText(error == null ? "Erreur inconnue." : error.getMessage());
+            alert.initOwner(owner);
+            alert.showAndWait();
+        });
+
+        Thread thread = new Thread(task, "export-task");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    enum ExportFormat {
+        SIMPLE_COPY("Copie simple");
+
+        private final String label;
+
+        ExportFormat(String label) {
+            this.label = label;
+        }
+
+        @Override
+        public String toString() {
+            return label;
+        }
     }
 
     private void runScan(Path root) {

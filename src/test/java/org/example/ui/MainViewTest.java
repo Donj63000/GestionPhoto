@@ -12,6 +12,7 @@ import javafx.scene.layout.TilePane;
 import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Window;
+import org.example.infra.ExportService;
 import org.example.infra.PhotoFileScanner;
 import org.example.infra.ThumbnailService;
 import org.example.ui.MainView.AlbumSelection;
@@ -23,6 +24,8 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
+import java.io.File;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -99,14 +102,10 @@ class MainViewTest {
     @Test
     void shouldTriggerImportFromSidebarButton() throws Exception {
         AtomicBoolean chooserCalled = new AtomicBoolean(false);
-        DirectoryChooser chooser = new DirectoryChooser() {
-            @Override
-            public java.io.File showDialog(Window ownerWindow) {
-                chooserCalled.set(true);
-                return null; // simulate cancel
-            }
-        };
-        TestableMainView view = new TestableMainView(chooser);
+        TestableMainView view = new TestableMainView(() -> {
+            chooserCalled.set(true);
+            return null; // simulate cancel
+        });
 
         Button importButton = findButton(view.getRoot(), "Importer", ".secondary-button");
         runOnFxThread(importButton::fire);
@@ -136,12 +135,9 @@ class MainViewTest {
                 .subList(0, Math.min(2, service.all().size()));
         AlbumSelection albumSelection = new AlbumSelection("Album Test", selection);
 
-        Dialog<AlbumSelection> dialog = new Dialog<>() {
-            @Override
-            public java.util.Optional<AlbumSelection> showAndWait() {
-                return java.util.Optional.of(albumSelection);
-            }
-        };
+        Dialog<AlbumSelection> dialog = new Dialog<>();
+        dialog.setResult(albumSelection);
+        dialog.setOnShowing(event -> Platform.runLater(dialog::close));
 
         AlbumTestView view = new AlbumTestView(service, dialog);
         Button createAlbum = findButton(view.getRoot(), "Creer un album", ".secondary-button");
@@ -161,11 +157,16 @@ class MainViewTest {
 
     @Test
     void shouldShowExportPreparationMessage() throws Exception {
-        MainView view = new MainView();
+        AtomicBoolean chooserCalled = new AtomicBoolean(false);
+        TestableMainView view = new TestableMainView(() -> {
+            chooserCalled.set(true);
+            return null;
+        });
         Button exportButton = findButton(view.getRoot(), "Exporter", ".secondary-button");
 
         runOnFxThread(exportButton::fire);
-        assertEquals("Export en preparation", findStatusLabel(view.getRoot()).getText());
+        assertTrue(chooserCalled.get(), "Export chooser should be opened");
+        assertEquals("Export annule", findStatusLabel(view.getRoot()).getText());
     }
 
     private static Button findButton(Node root, String label, String cssClass) {
@@ -201,16 +202,16 @@ class MainViewTest {
     }
 
     private static class TestableMainView extends MainView {
-        private final DirectoryChooser chooser;
+        private final Supplier<File> chooserResult;
 
-        TestableMainView(DirectoryChooser chooser) {
+        TestableMainView(Supplier<File> chooserResult) {
             super();
-            this.chooser = chooser;
+            this.chooserResult = chooserResult;
         }
 
         @Override
-        protected DirectoryChooser createDirectoryChooser() {
-            return chooser;
+        protected File showDirectoryDialog(Window owner, DirectoryChooser chooser) {
+            return chooserResult.get();
         }
     }
 
@@ -218,7 +219,7 @@ class MainViewTest {
         private final Dialog<AlbumSelection> dialog;
 
         AlbumTestView(PhotoLibraryService service, Dialog<AlbumSelection> dialog) {
-            super(service, new PhotoFileScanner(), new ThumbnailService());
+            super(service, new PhotoFileScanner(), new ThumbnailService(), new ExportService());
             this.dialog = dialog;
         }
 
