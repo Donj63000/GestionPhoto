@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -22,7 +23,9 @@ public class PhotoLibraryService {
     }
 
     public synchronized List<PhotoItem> all() {
-        return List.copyOf(items);
+        return items.stream()
+                .sorted(byMostRecent())
+                .toList();
     }
 
     public synchronized List<PhotoItem> filter(String search, Filter preset) {
@@ -38,6 +41,7 @@ public class PhotoLibraryService {
                         || item.title().toLowerCase(Locale.ROOT).contains(normalized)
                         || item.tags().stream().anyMatch(tag -> tag.toLowerCase(Locale.ROOT).contains(normalized))
                         || item.albums().stream().anyMatch(album -> album.toLowerCase(Locale.ROOT).contains(normalized)))
+                .sorted(byMostRecent())
                 .collect(Collectors.toList());
     }
 
@@ -98,6 +102,11 @@ public class PhotoLibraryService {
         }
         log.info("Album '{}' cree avec {} photos", normalized, selectedPaths.size());
         return List.copyOf(items);
+    }
+
+    private Comparator<PhotoItem> byMostRecent() {
+        return Comparator.comparing(PhotoItem::date).reversed()
+                .thenComparing(PhotoItem::title, String.CASE_INSENSITIVE_ORDER);
     }
 
     public enum Filter {

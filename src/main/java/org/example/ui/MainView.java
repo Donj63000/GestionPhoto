@@ -9,6 +9,7 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.ButtonBar.ButtonData;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Dialog;
@@ -44,8 +45,13 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
+import java.util.LinkedHashSet;
 import java.util.stream.Collectors;
 
 public class MainView {
@@ -106,6 +112,10 @@ public class MainView {
         Button helpButton = new Button("Aide");
         helpButton.getStyleClass().add("ghost-button");
         helpButton.setOnAction(event -> showHelpDialog(helpButton.getScene().getWindow()));
+        Button scanAllButton = new Button("Scanner tout");
+        scanAllButton.getStyleClass().add("secondary-button");
+        scanAllButton.setMinHeight(40);
+        scanAllButton.setOnAction(event -> runGlobalScan(scanAllButton.getScene().getWindow()));
         Button importButton = new Button("Importer des photos");
         importButton.getStyleClass().add("accent-button");
         importButton.setMinHeight(40);
@@ -113,7 +123,7 @@ public class MainView {
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        topRow.getChildren().addAll(titles, spacer, helpButton, importButton);
+        topRow.getChildren().addAll(titles, spacer, helpButton, scanAllButton, importButton);
 
         searchField.setText("");
         searchField.setPromptText("Rechercher par nom, tag ou date...");
@@ -702,6 +712,168 @@ public class MainView {
         public String toString() {
             return label;
         }
+    }
+
+    private void runGlobalScan(Window owner) {
+        List<Path> roots = detectScanRoots();
+        if (roots.isEmpty()) {
+            statusLabel.setText("Aucun dossier detecte pour le scan");
+            Alert info = new Alert(Alert.AlertType.INFORMATION);
+            info.setTitle("Scan global");
+            info.setHeaderText("Aucun dossier a scanner");
+            info.setContentText("Ajoutez un dossier Images ou un disque externe puis relancez le scan.");
+            if (owner != null) {
+                info.initOwner(owner);
+            }
+            info.show();
+            return;
+        }
+
+        Task<List<PhotoItem>> task = createGlobalScanTask(roots);
+        Dialog<Void> progressDialog = buildScanProgressDialog(owner, task);
+
+        task.setOnSucceeded(event -> {
+            List<PhotoItem> items = task.getValue();
+            if (!task.isCancelled()) {
+                photoService.replaceAll(items);
+                refreshGrid();
+                statusLabel.setText(items.isEmpty()
+                        ? "Aucune image trouvee"
+                        : items.size() + " photos trouvees");
+                showToast(owner, "Scan termine : " + items.size() + " images");
+                log.info("Scan global termine avec {} photos", items.size());
+            }
+            if (progressDialog != null) {
+                progressDialog.close();
+            }
+        });
+        task.setOnCancelled(event -> {
+            statusLabel.setText("Scan annule");
+            if (progressDialog != null) {
+                progressDialog.close();
+            }
+            log.info("Scan global annule");
+        });
+        task.setOnFailed(event -> {
+            log.error("Scan global echoue", task.getException());
+            statusLabel.setText("Erreur pendant le scan");
+            if (progressDialog != null) {
+                progressDialog.close();
+            }
+        });
+
+        Thread thread = new Thread(task, "global-scan-task");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private Task<List<PhotoItem>> createGlobalScanTask(List<Path> candidateRoots) {
+        List<Path> roots = candidateRoots.stream()
+                .filter(this::isUsableDirectory)
+                .distinct()
+                .toList();
+        return new Task<>() {
+            @Override
+            protected List<PhotoItem> call() {
+                if (roots.isEmpty()) {
+                    updateMessage("Aucun dossier valide");
+                    return List.of();
+                }
+                List<PhotoItem> aggregated = new ArrayList<>();
+                int total = roots.size();
+                int processed = 0;
+                int photosCount = 0;
+                updateProgress(0, total);
+                for (Path root : roots) {
+                    if (isCancelled()) {
+                        updateMessage("Scan annule");
+                        break;
+                    }
+                    updateMessage("Scan de " + root.getFileName());
+                    List<PhotoItem> rootItems = scanner.scan(List.of(root));
+                    photosCount += rootItems.size();
+                    aggregated.addAll(rootItems);
+                    processed++;
+                    updateProgress(processed, total);
+                    updateMessage(String.format(Locale.ROOT, "%d photos trouvees", photosCount));
+                }
+                aggregated.sort((a, b) -> b.date().compareTo(a.date()));
+                return aggregated;
+            }
+        };
+    }
+
+    private Dialog<Void> buildScanProgressDialog(Window owner, Task<?> task) {
+        Dialog<Void> progressDialog = new Dialog<>();
+        progressDialog.setTitle("Scan en cours");
+        progressDialog.setHeaderText("Recherche de vos photos");
+        if (owner != null) {
+            progressDialog.initOwner(owner);
+        }
+        ButtonType cancelButtonType = new ButtonType("Annuler", ButtonData.CANCEL_CLOSE);
+        progressDialog.getDialogPane().getButtonTypes().add(cancelButtonType);
+
+        ProgressBar progressBar = new ProgressBar();
+        progressBar.setMinWidth(280);
+        progressBar.progressProperty().bind(task.progressProperty());
+        Label progressLabel = new Label("Preparation du scan...");
+        progressLabel.textProperty().bind(task.messageProperty());
+
+        VBox content = new VBox(10, progressLabel, progressBar);
+        content.setPadding(new Insets(12));
+        progressDialog.getDialogPane().setContent(content);
+
+        Node cancelButton = progressDialog.getDialogPane().lookupButton(cancelButtonType);
+        if (cancelButton != null) {
+            cancelButton.addEventFilter(MouseEvent.MOUSE_CLICKED, event -> {
+                if (!task.isDone()) {
+                    task.cancel();
+                    statusLabel.setText("Scan annule");
+                }
+                progressDialog.close();
+                event.consume();
+            });
+        }
+
+        progressDialog.show();
+        return progressDialog;
+    }
+
+    private List<Path> detectScanRoots() {
+        Set<Path> roots = new LinkedHashSet<>();
+        Path home = Paths.get(System.getProperty("user.home", ""));
+        addIfUsable(roots, home.resolve("Pictures"));
+        addIfUsable(roots, home.resolve("Images"));
+        addIfUsable(roots, home.resolve("Documents"));
+        addIfUsable(roots, home.resolve("Photos"));
+        addIfUsable(roots, home);
+        exploreExternalMounts(Paths.get("/media"), roots);
+        exploreExternalMounts(Paths.get("/mnt"), roots);
+        exploreExternalMounts(Paths.get("/Volumes"), roots);
+        return roots.stream()
+                .filter(this::isUsableDirectory)
+                .toList();
+    }
+
+    private void exploreExternalMounts(Path parent, Set<Path> collector) {
+        if (!isUsableDirectory(parent)) {
+            return;
+        }
+        try (var children = Files.list(parent)) {
+            children.filter(this::isUsableDirectory).forEach(collector::add);
+        } catch (Exception e) {
+            log.debug("Impossible d'explorer {}: {}", parent, e.getMessage());
+        }
+    }
+
+    private void addIfUsable(Set<Path> collector, Path path) {
+        if (isUsableDirectory(path)) {
+            collector.add(path);
+        }
+    }
+
+    private boolean isUsableDirectory(Path path) {
+        return path != null && Files.isDirectory(path) && Files.isReadable(path);
     }
 
     private void runScan(Path root) {
