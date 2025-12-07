@@ -13,7 +13,7 @@
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <javafx.version>21.0.5</javafx.version>
-        <javafx.platform>win</javafx.platform>
+        <javafx.platform>linux</javafx.platform>
         <slf4j.version>2.0.13</slf4j.version>
         <logback.version>1.5.6</logback.version>
         <junit.jupiter.version>5.10.2</junit.jupiter.version>
