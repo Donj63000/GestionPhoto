@@ -20,9 +20,11 @@ import org.example.ui.model.PhotoItem;
 import org.example.ui.service.PhotoLibraryService;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Assumptions;
 
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import java.io.File;
@@ -37,9 +39,23 @@ class MainViewTest {
     @BeforeAll
     static void setupToolkit() throws Exception {
         if (jfxStarted.compareAndSet(false, true)) {
+            System.setProperty("javafx.platform", "Monocle");
+            System.setProperty("glass.platform", "Monocle");
+            System.setProperty("monocle.platform", "Headless");
+            System.setProperty("monocle.screen", "offscreen");
+            System.setProperty("javafx.headless", "true");
+            System.setProperty("prism.order", "sw");
+            System.setProperty("prism.text", "t2k");
+            System.setProperty("java.awt.headless", "true");
             CountDownLatch latch = new CountDownLatch(1);
-            Platform.startup(latch::countDown);
-            latch.await();
+            try {
+                Platform.startup(latch::countDown);
+                boolean started = latch.await(5, TimeUnit.SECONDS);
+                Assumptions.assumeTrue(started, "Initialisation JavaFX indisponible");
+            } catch (Exception | Error e) {
+                jfxStarted.set(false);
+                Assumptions.assumeTrue(false, "JavaFX non disponible: " + e.getMessage());
+            }
         }
     }
 
@@ -169,7 +185,7 @@ class MainViewTest {
         assertEquals("Export annule", findStatusLabel(view.getRoot()).getText());
     }
 
-    private static Button findButton(Node root, String label, String cssClass) {
+    static Button findButton(Node root, String label, String cssClass) {
         return root.lookupAll(cssClass).stream()
                 .filter(node -> node instanceof Button)
                 .map(node -> (Button) node)
@@ -178,7 +194,7 @@ class MainViewTest {
                 .orElseThrow();
     }
 
-    private static Label findStatusLabel(Node root) {
+    static Label findStatusLabel(Node root) {
         return (Label) root.lookup(".status-label");
     }
 
@@ -192,7 +208,7 @@ class MainViewTest {
                 .orElse("");
     }
 
-    private static void runOnFxThread(Runnable action) throws Exception {
+    static void runOnFxThread(Runnable action) throws Exception {
         CountDownLatch latch = new CountDownLatch(1);
         Platform.runLater(() -> {
             action.run();

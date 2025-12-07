@@ -513,7 +513,16 @@ public class MainView {
         startExportTask(selection, destination.toPath(), format, owner);
     }
 
-    private ExportFormat promptExportFormat(Window owner) {
+    protected ExportFormat promptExportFormat(Window owner) {
+        Dialog<ExportFormat> dialog = buildExportFormatDialog(owner);
+        if (dialog == null) {
+            log.warn("Aucun dialogue de format fourni, utilisation de la copie simple par defaut");
+            return ExportFormat.SIMPLE_COPY;
+        }
+        return dialog.showAndWait().orElse(null);
+    }
+
+    protected Dialog<ExportFormat> buildExportFormatDialog(Window owner) {
         Dialog<ExportFormat> dialog = new Dialog<>();
         dialog.setTitle("Format d'export");
         dialog.setHeaderText("Choisissez comment copier vos photos");
@@ -534,7 +543,7 @@ public class MainView {
         dialog.setResultConverter(buttonType -> buttonType == ButtonType.OK
                 ? choiceBox.getValue()
                 : null);
-        return dialog.showAndWait().orElse(null);
+        return dialog;
     }
 
     private void startExportTask(List<PhotoItem> selection, Path destination, ExportFormat format, Window owner) {
@@ -549,13 +558,55 @@ public class MainView {
             }
         };
 
+        Dialog<Void> progressDialog = buildExportProgressDialog(owner, task);
+        Button closeButton = progressDialog == null
+                ? null
+                : (Button) progressDialog.getDialogPane().lookupButton(ButtonType.CLOSE);
+        if (closeButton != null) {
+            closeButton.setDisable(true);
+        }
+
+        task.setOnSucceeded(event -> {
+            int copied = task.getValue();
+            statusLabel.setText("Export termine : " + copied + " fichiers copies");
+            showToast(owner, "Export termine : " + copied + " fichiers");
+            if (closeButton != null) {
+                closeButton.setDisable(false);
+            }
+            if (progressDialog != null) {
+                progressDialog.close();
+            }
+            log.info("Export reussi vers {} avec format {}", destination, format);
+        });
+        task.setOnFailed(event -> {
+            Throwable error = task.getException();
+            log.error("Export echoue vers {}", destination, error);
+            statusLabel.setText("Export echoue");
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle("Export echoue");
+            alert.setHeaderText("Impossible de copier les photos");
+            alert.setContentText(formatExportErrorMessage(destination, error));
+            alert.initOwner(owner);
+            alert.showAndWait();
+            if (closeButton != null) {
+                closeButton.setDisable(false);
+            }
+            if (progressDialog != null) {
+                progressDialog.close();
+            }
+        });
+
+        Thread thread = new Thread(task, "export-task");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    protected Dialog<Void> buildExportProgressDialog(Window owner, Task<?> task) {
         Dialog<Void> progressDialog = new Dialog<>();
         progressDialog.setTitle("Export en cours");
         progressDialog.setHeaderText("Vos photos sont en cours de copie");
         progressDialog.initOwner(owner);
         progressDialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
-        Button closeButton = (Button) progressDialog.getDialogPane().lookupButton(ButtonType.CLOSE);
-        closeButton.setDisable(true);
 
         ProgressBar progressBar = new ProgressBar();
         progressBar.setMinWidth(280);
@@ -567,32 +618,15 @@ public class MainView {
         content.setPadding(new Insets(12));
         progressDialog.getDialogPane().setContent(content);
         progressDialog.show();
+        return progressDialog;
+    }
 
-        task.setOnSucceeded(event -> {
-            int copied = task.getValue();
-            statusLabel.setText("Export termine : " + copied + " fichiers copies");
-            showToast(owner, "Export termine : " + copied + " fichiers");
-            closeButton.setDisable(false);
-            progressDialog.close();
-            log.info("Export reussi vers {} avec format {}", destination, format);
-        });
-        task.setOnFailed(event -> {
-            closeButton.setDisable(false);
-            progressDialog.close();
-            Throwable error = task.getException();
-            log.error("Export echoue vers {}", destination, error);
-            statusLabel.setText("Export echoue");
-            Alert alert = new Alert(Alert.AlertType.ERROR);
-            alert.setTitle("Export echoue");
-            alert.setHeaderText("Impossible de copier les photos");
-            alert.setContentText(error == null ? "Erreur inconnue." : error.getMessage());
-            alert.initOwner(owner);
-            alert.showAndWait();
-        });
-
-        Thread thread = new Thread(task, "export-task");
-        thread.setDaemon(true);
-        thread.start();
+    private String formatExportErrorMessage(Path destination, Throwable error) {
+        String base = "Impossible de copier les photos vers '" + destination + "'. Verifiez l'espace et les droits d'ecriture.";
+        if (error != null && error.getMessage() != null && !error.getMessage().isBlank()) {
+            return base + " Details : " + error.getMessage();
+        }
+        return base;
     }
 
     enum ExportFormat {
