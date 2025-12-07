@@ -6,6 +6,8 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.Hyperlink;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
@@ -88,6 +90,7 @@ public class MainView {
 
         Button helpButton = new Button("Aide");
         helpButton.getStyleClass().add("ghost-button");
+        helpButton.setOnAction(event -> showHelpDialog(helpButton.getScene().getWindow()));
         Button importButton = new Button("Importer des photos");
         importButton.getStyleClass().add("accent-button");
         importButton.setMinHeight(40);
@@ -368,5 +371,25 @@ public class MainView {
         Thread thread = new Thread(task, "scan-task");
         thread.setDaemon(true);
         thread.start();
+    }
+
+    public void showHelpDialog(Window owner) {
+        log.info("Ouverture de l'aide");
+        Alert dialog = new Alert(Alert.AlertType.INFORMATION);
+        dialog.setTitle("Aide et support");
+        dialog.setHeaderText("Bienvenue dans Photos Gestion");
+        dialog.initOwner(owner);
+        dialog.getButtonTypes().setAll(ButtonType.CLOSE);
+
+        Label intro = new Label("Retrouvez ici les ressources pour prendre en main l'application.");
+        Hyperlink documentation = new Hyperlink("Documentation utilisateur : https://docs.photosgestion.local");
+        documentation.setOnAction(event -> documentation.setVisited(true));
+        Label contact = new Label("Support : support@photosgestion.local | 01 23 45 67 89");
+
+        VBox content = new VBox(8, intro, documentation, contact);
+        content.setPadding(new Insets(10));
+        dialog.getDialogPane().setContent(content);
+
+        dialog.showAndWait();
     }
 }
