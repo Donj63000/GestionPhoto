@@ -24,6 +24,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Assumptions;
 
+import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -237,6 +239,33 @@ class MainViewTest {
                 "Removing favorite while filter is active should hide the card");
     }
 
+    @Test
+    void shouldApplyPartialSelectionToNewAlbum() throws Exception {
+        PhotoLibraryService service = new PhotoLibraryService();
+        int initialSize = service.all().size();
+
+        List<PhotoItem> scanned = List.of(
+                new PhotoItem(Path.of("imports/nouvelle1.jpg"), "Nouvelle photo", LocalDate.now(), "1.0 MB", List.of(), List.of(), false),
+                new PhotoItem(service.all().get(0).path(), "Doublon", LocalDate.now(), "1.0 MB", List.of(), List.of(), false)
+        );
+
+        Dialog<MainView.ScanSelection> dialog = new Dialog<>();
+        dialog.setResult(new MainView.ScanSelection(List.of(scanned.get(0)), "Album Test FX"));
+        dialog.setOnShowing(event -> Platform.runLater(dialog::close));
+
+        ScanSelectionTestView view = new ScanSelectionTestView(service, dialog);
+        runOnFxThread(() -> view.handleScanResults(null, scanned));
+
+        assertEquals(initialSize + 1, service.all().size(), "Only the selected new photo should be added");
+        PhotoItem added = service.all().stream()
+                .filter(item -> item.path().equals(scanned.get(0).path()))
+                .findFirst()
+                .orElseThrow();
+        assertTrue(added.albums().stream().anyMatch(name -> name.equalsIgnoreCase("Album Test FX")),
+                "Chosen album should be applied to the added photo");
+        assertEquals("1 photos ajoutees (Album Test FX). 1 doublon(s) ignore(s).", findStatusLabel(view.getRoot()).getText());
+    }
+
     static Button findButton(Node root, String label, String cssClass) {
         return root.lookupAll(cssClass).stream()
                 .filter(node -> node instanceof Button)
@@ -339,6 +368,20 @@ class MainViewTest {
     private static class FavoriteTestView extends MainView {
         FavoriteTestView(PhotoLibraryService service) {
             super(service, new PhotoFileScanner(), new ThumbnailService(), new ExportService());
+        }
+    }
+
+    private static class ScanSelectionTestView extends MainView {
+        private final Dialog<ScanSelection> dialog;
+
+        ScanSelectionTestView(PhotoLibraryService service, Dialog<ScanSelection> dialog) {
+            super(service, new PhotoFileScanner(), new ThumbnailService(), new ExportService());
+            this.dialog = dialog;
+        }
+
+        @Override
+        protected Dialog<ScanSelection> buildScanSelectionDialog(Window owner, List<PhotoItem> items) {
+            return dialog;
         }
     }
 }

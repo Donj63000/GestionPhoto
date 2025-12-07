@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -51,6 +52,52 @@ public class PhotoLibraryService {
             items.addAll(enrichAlbums(newItems));
         }
         log.info("Bibliotheque mise a jour: {} elements", items.size());
+    }
+
+    public synchronized AddResult addPhotos(List<PhotoItem> newItems, String albumName) {
+        if (newItems == null || newItems.isEmpty()) {
+            log.info("Ajout ignore: aucune photo selectionnee");
+            return new AddResult(0, 0, Set.of());
+        }
+        String normalizedAlbum = albumName == null ? "" : albumName.trim();
+        Set<Path> existingPaths = items.stream()
+                .map(PhotoItem::path)
+                .collect(Collectors.toSet());
+
+        int duplicateCount = 0;
+        Set<String> affectedAlbums = new HashSet<>();
+        if (!normalizedAlbum.isBlank()) {
+            affectedAlbums.add(normalizedAlbum);
+        }
+
+        for (PhotoItem candidate : newItems) {
+            if (existingPaths.contains(candidate.path())) {
+                duplicateCount++;
+                continue;
+            }
+            List<String> albums = candidate.albums();
+            if (!normalizedAlbum.isBlank() && candidate.albums().stream()
+                    .noneMatch(existing -> existing.equalsIgnoreCase(normalizedAlbum))) {
+                albums = new ArrayList<>(albums);
+                albums.add(normalizedAlbum);
+            }
+            items.add(new PhotoItem(candidate.path(), candidate.title(), candidate.date(), candidate.sizeLabel(),
+                    candidate.tags(), albums, candidate.favorite()));
+            existingPaths.add(candidate.path());
+        }
+
+        log.info("Ajout termine: {} doublons ignores, taille finale {}", duplicateCount, items.size());
+        return new AddResult(newItems.size() - duplicateCount, duplicateCount, Set.copyOf(affectedAlbums));
+    }
+
+    public synchronized Set<String> albumNames() {
+        return items.stream()
+                .flatMap(item -> item.albums().stream())
+                .collect(Collectors.toCollection(() -> new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER)));
+    }
+
+    public synchronized boolean contains(Path path) {
+        return items.stream().anyMatch(item -> item.path().equals(path));
     }
 
     public synchronized boolean toggleFavorite(Path path) {
@@ -108,6 +155,8 @@ public class PhotoLibraryService {
         return Comparator.comparing(PhotoItem::date).reversed()
                 .thenComparing(PhotoItem::title, String.CASE_INSENSITIVE_ORDER);
     }
+
+    public record AddResult(int addedCount, int duplicateCount, Set<String> affectedAlbums) { }
 
     public enum Filter {
         ALL,
