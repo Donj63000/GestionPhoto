@@ -1,0 +1,328 @@
+package org.example.ui;
+
+import javafx.concurrent.Task;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Node;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.TextField;
+import javafx.scene.control.ToggleButton;
+import javafx.scene.control.ToggleGroup;
+import javafx.scene.image.ImageView;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
+import javafx.scene.layout.TilePane;
+import javafx.scene.layout.VBox;
+import javafx.stage.DirectoryChooser;
+import javafx.stage.Window;
+import org.example.infra.PhotoFileScanner;
+import org.example.infra.ThumbnailService;
+import org.example.ui.model.PhotoItem;
+import org.example.ui.service.PhotoLibraryService;
+import org.example.ui.service.PhotoLibraryService.Filter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+
+public class MainView {
+    private static final Logger log = LoggerFactory.getLogger(MainView.class);
+
+    private final BorderPane root;
+    private final PhotoLibraryService photoService;
+    private final PhotoFileScanner scanner;
+    private final ThumbnailService thumbnailService;
+    private final TilePane grid;
+    private final ToggleGroup filterGroup;
+    private final TextField searchField;
+    private final Label statusLabel;
+
+    public MainView() {
+        this(new PhotoLibraryService(), new PhotoFileScanner(), new ThumbnailService());
+    }
+
+    public MainView(PhotoLibraryService photoService, PhotoFileScanner scanner, ThumbnailService thumbnailService) {
+        this.root = new BorderPane();
+        this.photoService = photoService;
+        this.scanner = scanner;
+        this.thumbnailService = thumbnailService;
+        this.grid = new TilePane();
+        this.filterGroup = new ToggleGroup();
+        this.searchField = new TextField();
+        this.statusLabel = new Label("Pret");
+        root.getStyleClass().add("app-root");
+        root.setTop(buildHeader());
+        root.setLeft(buildSidebar());
+        root.setCenter(buildContent());
+        refreshGrid();
+        log.debug("MainView structure initialisee");
+    }
+
+    public BorderPane getRoot() {
+        return root;
+    }
+
+    private Node buildHeader() {
+        VBox container = new VBox();
+        container.getStyleClass().add("header");
+        container.setPadding(new Insets(16, 24, 16, 24));
+        container.setSpacing(8);
+
+        HBox topRow = new HBox(12);
+        topRow.setAlignment(Pos.CENTER_LEFT);
+
+        Label title = new Label("Photos Gestion");
+        title.getStyleClass().add("title");
+        Label subtitle = new Label("Galerie simple pour tout le monde");
+        subtitle.getStyleClass().add("subtitle");
+        VBox titles = new VBox(2, title, subtitle);
+
+        Button helpButton = new Button("Aide");
+        helpButton.getStyleClass().add("ghost-button");
+        Button importButton = new Button("Importer des photos");
+        importButton.getStyleClass().add("accent-button");
+        importButton.setMinHeight(40);
+        importButton.setOnAction(event -> launchImport(importButton.getScene().getWindow()));
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        topRow.getChildren().addAll(titles, spacer, helpButton, importButton);
+
+        searchField.setText("");
+        searchField.setPromptText("Rechercher par nom, tag ou date...");
+        searchField.getStyleClass().add("search-field");
+        searchField.setPrefHeight(40);
+        searchField.textProperty().addListener((obs, oldVal, newVal) -> refreshGrid());
+
+        HBox filters = new HBox(10,
+                buildFilterChip("Tous", Filter.ALL),
+                buildFilterChip("Favoris", Filter.FAVORITES),
+                buildFilterChip("Recents", Filter.RECENTS),
+                buildFilterChip("Albums", Filter.ALBUMS));
+        filters.setAlignment(Pos.CENTER_LEFT);
+
+        HBox searchRow = new HBox(12, searchField, filters);
+        HBox.setHgrow(searchField, Priority.ALWAYS);
+        searchRow.setAlignment(Pos.CENTER_LEFT);
+
+        container.getChildren().addAll(topRow, searchRow);
+        return container;
+    }
+
+    private Node buildSidebar() {
+        VBox sidebar = new VBox(12);
+        sidebar.getStyleClass().add("sidebar");
+        sidebar.setPadding(new Insets(20));
+
+        Label navTitle = new Label("Navigation");
+        navTitle.getStyleClass().add("section-title");
+
+        VBox navButtons = new VBox(8,
+                createNavButton("Accueil"),
+                createNavButton("Photos"),
+                createNavButton("Albums"),
+                createNavButton("Favoris"),
+                createNavButton("A trier"));
+
+        Label quickTitle = new Label("Actions rapides");
+        quickTitle.getStyleClass().add("section-title");
+        VBox quickButtons = new VBox(8,
+                createSecondaryButton("Importer"),
+                createSecondaryButton("Creer un album"),
+                createSecondaryButton("Exporter"));
+
+        sidebar.getChildren().addAll(navTitle, navButtons, quickTitle, quickButtons);
+        return sidebar;
+    }
+
+    private Node buildContent() {
+        VBox content = new VBox(14);
+        content.getStyleClass().add("content-area");
+        content.setPadding(new Insets(16));
+
+        content.getChildren().addAll(buildHeroSection(), buildGrid());
+
+        ScrollPane scrollPane = new ScrollPane(content);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scrollPane.getStyleClass().add("content-scroll");
+        return scrollPane;
+    }
+
+    private Node buildHeroSection() {
+        HBox hero = new HBox(16);
+        hero.getStyleClass().add("hero-card");
+        hero.setAlignment(Pos.CENTER_LEFT);
+        hero.setPadding(new Insets(16));
+
+        VBox text = new VBox(6);
+        Label title = new Label("Bienvenue dans votre galerie");
+        title.getStyleClass().add("hero-title");
+        Label subtitle = new Label("Importez un dossier pour commencer, ou ouvrez vos favoris.");
+        subtitle.getStyleClass().add("hero-subtitle");
+        text.getChildren().addAll(title, subtitle);
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        Button primary = new Button("Importer un dossier");
+        primary.getStyleClass().add("accent-button");
+        primary.setMinHeight(42);
+        primary.setOnAction(event -> launchImport(primary.getScene().getWindow()));
+
+        Button secondary = new Button("Ouvrir les favoris");
+        secondary.getStyleClass().add("ghost-button");
+        secondary.setOnAction(event -> {
+            filterGroup.getToggles().stream()
+                    .filter(t -> t.getUserData() == Filter.FAVORITES)
+                    .findFirst()
+                    .ifPresent(t -> t.setSelected(true));
+            refreshGrid();
+        });
+
+        hero.getChildren().addAll(text, spacer, secondary, primary);
+
+        statusLabel.getStyleClass().add("status-label");
+        HBox statusRow = new HBox(statusLabel);
+        statusRow.setAlignment(Pos.CENTER_LEFT);
+        statusRow.setPadding(new Insets(8, 0, 0, 0));
+        return new VBox(8, hero, statusRow);
+    }
+
+    private Node buildGrid() {
+        VBox wrapper = new VBox(8);
+        wrapper.getStyleClass().add("grid-wrapper");
+        Label label = new Label("Vos photos en vedette");
+        label.getStyleClass().add("section-title");
+
+        grid.setPrefColumns(4);
+        grid.setHgap(12);
+        grid.setVgap(12);
+        grid.getStyleClass().add("gallery-grid");
+
+        wrapper.getChildren().addAll(label, grid);
+        return wrapper;
+    }
+
+    private Node createPhotoCard(PhotoItem item) {
+        VBox card = new VBox(8);
+        card.getStyleClass().add("photo-card");
+        card.setPadding(new Insets(10));
+
+        StackPane thumbWrapper = new StackPane();
+        thumbWrapper.getStyleClass().add("photo-thumb");
+        thumbWrapper.setMinHeight(140);
+        thumbWrapper.setMaxHeight(140);
+
+        ImageView imageView = new ImageView();
+        imageView.getStyleClass().add("photo-image");
+        imageView.setFitWidth(260);
+        imageView.setFitHeight(140);
+        imageView.setPreserveRatio(true);
+        imageView.setSmooth(true);
+
+        thumbWrapper.getChildren().add(imageView);
+
+        if (Files.exists(item.path())) {
+            thumbnailService.load(item.path(), 320, imageView::setImage,
+                    ex -> log.warn("Miniature indisponible pour {}", item.path().getFileName()));
+        }
+
+        Label name = new Label(item.title());
+        name.getStyleClass().add("photo-title");
+        String meta = item.date().toString() + " | " + item.sizeLabel() + (item.favorite() ? " | *" : "");
+        Label info = new Label(meta);
+        info.getStyleClass().add("photo-meta");
+
+        card.getChildren().addAll(thumbWrapper, name, info);
+        return card;
+    }
+
+    private ToggleButton buildFilterChip(String label, Filter filter) {
+        ToggleButton button = new ToggleButton(label);
+        button.getStyleClass().add("filter-chip");
+        button.setMinHeight(32);
+        button.setToggleGroup(filterGroup);
+        button.setUserData(filter);
+        button.setOnAction(event -> refreshGrid());
+        if (filter == Filter.ALL) {
+            button.setSelected(true);
+        }
+        return button;
+    }
+
+    private Button createNavButton(String label) {
+        Button button = new Button(label);
+        button.getStyleClass().add("nav-button");
+        button.setAlignment(Pos.CENTER_LEFT);
+        button.setMaxWidth(Double.MAX_VALUE);
+        return button;
+    }
+
+    private Button createSecondaryButton(String label) {
+        Button button = new Button(label);
+        button.getStyleClass().add("secondary-button");
+        button.setAlignment(Pos.CENTER_LEFT);
+        button.setMaxWidth(Double.MAX_VALUE);
+        return button;
+    }
+
+    private void refreshGrid() {
+        Filter activeFilter = filterGroup.getSelectedToggle() == null
+                ? Filter.ALL
+                : (Filter) filterGroup.getSelectedToggle().getUserData();
+        String search = searchField.getText();
+        grid.getChildren().clear();
+        for (PhotoItem item : photoService.filter(search, activeFilter)) {
+            grid.getChildren().add(createPhotoCard(item));
+        }
+        log.info("Grid rafraichie: {} elements (filtre={}, recherche='{}')",
+                grid.getChildren().size(), activeFilter, search == null ? "" : search.trim());
+        statusLabel.setText(grid.getChildren().isEmpty() ? "Aucun resultat" : "Affichage: " + grid.getChildren().size() + " photos");
+    }
+
+    private void launchImport(Window owner) {
+        DirectoryChooser chooser = new DirectoryChooser();
+        chooser.setTitle("Choisir un dossier de photos");
+        File selectedDir = chooser.showDialog(owner);
+        if (selectedDir == null) {
+            statusLabel.setText("Import annule");
+            return;
+        }
+        runScan(selectedDir.toPath());
+    }
+
+    private void runScan(Path root) {
+        statusLabel.setText("Scan en cours...");
+        Task<List<PhotoItem>> task = new Task<>() {
+            @Override
+            protected List<PhotoItem> call() {
+                return scanner.scan(root);
+            }
+        };
+        task.setOnSucceeded(event -> {
+            List<PhotoItem> items = task.getValue();
+            photoService.replaceAll(items);
+            refreshGrid();
+            statusLabel.setText(items.isEmpty()
+                    ? "Aucune image trouvee dans le dossier"
+                    : "Import reussi: " + items.size() + " photos");
+            log.info("Import termine depuis {}", root);
+        });
+        task.setOnFailed(event -> {
+            log.error("Import echoue pour {}", root, task.getException());
+            statusLabel.setText("Erreur lors de l'import");
+        });
+        Thread thread = new Thread(task, "scan-task");
+        thread.setDaemon(true);
+        thread.start();
+    }
+}

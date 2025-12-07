@@ -1,0 +1,32 @@
+2025-12-05 19:45:33.019 INFO  [JavaFX Application Thread] org.example.app.PhotoGestionApp - UI principale initialisee
+2025-12-05 19:47:49.335 INFO  [main] o.e.ui.service.MockPhotoService - MockPhotoService charge 8 photos de demo
+2025-12-05 19:47:49.435 INFO  [main] org.example.ui.MainView - Grid rafraichie: 8 elements (filtre=ALL, recherche='')
+2025-12-05 19:48:18.446 INFO  [main] o.e.ui.service.MockPhotoService - MockPhotoService charge 8 photos de demo
+2025-12-05 19:48:18.550 INFO  [main] org.example.ui.MainView - Grid rafraichie: 8 elements (filtre=ALL, recherche='')
+2025-12-05 19:48:18.564 INFO  [main] org.example.ui.MainView - Grid rafraichie: 3 elements (filtre=FAVORITES, recherche='')
+2025-12-05 19:48:18.593 INFO  [main] o.e.ui.service.MockPhotoService - MockPhotoService charge 8 photos de demo
+2025-12-05 19:48:18.603 INFO  [main] org.example.ui.MainView - Grid rafraichie: 8 elements (filtre=ALL, recherche='')
+2025-12-05 19:48:18.608 INFO  [main] o.e.ui.service.MockPhotoService - MockPhotoService charge 8 photos de demo
+2025-12-05 19:48:18.613 INFO  [main] org.example.ui.MainView - Grid rafraichie: 8 elements (filtre=ALL, recherche='')
+2025-12-05 19:53:17.746 INFO  [main] org.example.infra.PhotoFileScanner - Scan termine: 2 fichiers images dans C:\Users\nodig\AppData\Local\Temp\junit16161605544993241109
+2025-12-05 19:53:18.687 INFO  [main] o.e.ui.service.PhotoLibraryService - PhotoLibraryService initialise avec 8 photos de demo
+2025-12-05 19:53:18.861 INFO  [main] org.example.ui.MainView - Grid rafraichie: 8 elements (filtre=ALL, recherche='')
+2025-12-05 19:53:18.880 INFO  [main] org.example.ui.MainView - Grid rafraichie: 3 elements (filtre=FAVORITES, recherche='')
+2025-12-05 19:53:18.885 INFO  [main] o.e.ui.service.PhotoLibraryService - PhotoLibraryService initialise avec 8 photos de demo
+2025-12-05 19:53:18.892 INFO  [main] org.example.ui.MainView - Grid rafraichie: 8 elements (filtre=ALL, recherche='')
+2025-12-05 19:53:18.896 INFO  [main] o.e.ui.service.PhotoLibraryService - PhotoLibraryService initialise avec 8 photos de demo
+2025-12-05 19:53:18.903 INFO  [main] org.example.ui.MainView - Grid rafraichie: 8 elements (filtre=ALL, recherche='')
+2025-12-05 20:46:31.909 INFO  [JavaFX Application Thread] o.e.ui.service.PhotoLibraryService - PhotoLibraryService initialise avec 8 photos de demo
+2025-12-05 20:46:32.192 INFO  [JavaFX Application Thread] org.example.ui.MainView - Grid rafraichie: 8 elements (filtre=ALL, recherche='')
+2025-12-05 20:46:32.915 INFO  [JavaFX Application Thread] org.example.app.PhotoGestionApp - UI principale initialisee
+2025-12-05 20:48:33.714 INFO  [main] org.example.infra.PhotoFileScanner - Scan termine: 2 fichiers images dans C:\Users\nodig\AppData\Local\Temp\junit9027848877677093611
+2025-12-05 20:48:34.371 INFO  [main] o.e.ui.service.PhotoLibraryService - PhotoLibraryService initialise avec 8 photos de demo
+2025-12-05 20:48:34.540 INFO  [main] org.example.ui.MainView - Grid rafraichie: 8 elements (filtre=ALL, recherche='')
+2025-12-05 20:48:34.552 INFO  [main] org.example.ui.MainView - Grid rafraichie: 3 elements (filtre=FAVORITES, recherche='')
+2025-12-05 20:48:34.558 INFO  [main] o.e.ui.service.PhotoLibraryService - PhotoLibraryService initialise avec 8 photos de demo
+2025-12-05 20:48:34.566 INFO  [main] org.example.ui.MainView - Grid rafraichie: 8 elements (filtre=ALL, recherche='')
+2025-12-05 20:48:34.570 INFO  [main] o.e.ui.service.PhotoLibraryService - PhotoLibraryService initialise avec 8 photos de demo
+2025-12-05 20:48:34.576 INFO  [main] org.example.ui.MainView - Grid rafraichie: 8 elements (filtre=ALL, recherche='')
+2025-12-05 22:32:43.050 INFO  [JavaFX Application Thread] o.e.ui.service.PhotoLibraryService - PhotoLibraryService initialise avec 8 photos de demo
+2025-12-05 22:32:44.561 INFO  [JavaFX Application Thread] org.example.ui.MainView - Grid rafraichie: 8 elements (filtre=ALL, recherche='')
+2025-12-05 22:32:47.338 INFO  [JavaFX Application Thread] org.example.app.PhotoGestionApp - UI principale initialisee
