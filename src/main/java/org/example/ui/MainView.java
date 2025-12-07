@@ -1,12 +1,16 @@
 package org.example.ui;
 
+import javafx.animation.PauseTransition;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Hyperlink;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
@@ -22,6 +26,7 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.TilePane;
 import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
+import javafx.stage.Popup;
 import javafx.stage.Window;
 import org.example.infra.PhotoFileScanner;
 import org.example.infra.ThumbnailService;
@@ -35,6 +40,9 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
+import javafx.util.Duration;
 
 public class MainView {
     private static final Logger log = LoggerFactory.getLogger(MainView.class);
@@ -297,9 +305,7 @@ public class MainView {
     }
 
     private void refreshGrid() {
-        Filter activeFilter = filterGroup.getSelectedToggle() == null
-                ? Filter.ALL
-                : (Filter) filterGroup.getSelectedToggle().getUserData();
+        Filter activeFilter = getActiveFilter();
         String search = searchField.getText();
         grid.getChildren().clear();
         for (PhotoItem item : photoService.filter(search, activeFilter)) {
@@ -308,6 +314,12 @@ public class MainView {
         log.info("Grid rafraichie: {} elements (filtre={}, recherche='{}')",
                 grid.getChildren().size(), activeFilter, search == null ? "" : search.trim());
         statusLabel.setText(grid.getChildren().isEmpty() ? "Aucun resultat" : "Affichage: " + grid.getChildren().size() + " photos");
+    }
+
+    private Filter getActiveFilter() {
+        return filterGroup.getSelectedToggle() == null
+                ? Filter.ALL
+                : (Filter) filterGroup.getSelectedToggle().getUserData();
     }
 
     private void launchImport(Window owner) {
@@ -328,12 +340,135 @@ public class MainView {
     private void handleCreateAlbum(Window owner) {
         log.info("Creation d'album demarree");
         statusLabel.setText("Creation d'album en preparation");
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle("Creer un album");
-        alert.setHeaderText(null);
-        alert.setContentText("La creation d'album sera bientot disponible.");
-        alert.initOwner(owner);
-        alert.show();
+        List<PhotoItem> activePhotos = photoService.filter(searchField.getText(), getActiveFilter());
+        if (activePhotos.isEmpty()) {
+            statusLabel.setText("Aucune photo disponible pour un album");
+            Alert emptyAlert = new Alert(Alert.AlertType.INFORMATION);
+            emptyAlert.setTitle("Pas de photos");
+            emptyAlert.setHeaderText("Impossible de creer un album");
+            emptyAlert.setContentText("Aucune photo ne correspond au filtre actuel.");
+            if (owner != null) {
+                emptyAlert.initOwner(owner);
+            }
+            emptyAlert.show();
+            return;
+        }
+
+        Dialog<AlbumSelection> dialog = buildAlbumDialog(owner, activePhotos);
+        Optional<AlbumSelection> result = dialog == null ? Optional.empty() : dialog.showAndWait();
+        result.filter(selection -> !selection.name().isBlank() && !selection.photos().isEmpty())
+                .ifPresent(selection -> {
+                    photoService.createAlbum(selection.name(), selection.photos());
+                    refreshGrid();
+                    statusLabel.setText("Album '" + selection.name() + "' cree");
+                    showToast(owner, "Album '" + selection.name() + "' cree (" + selection.photos().size() + " photos)");
+                });
+    }
+
+    protected Dialog<AlbumSelection> buildAlbumDialog(Window owner, List<PhotoItem> activePhotos) {
+        Dialog<AlbumSelection> dialog = new Dialog<>();
+        dialog.setTitle("Creer un album");
+        dialog.setHeaderText("Choisissez un nom et les photos a inclure");
+        if (owner != null) {
+            dialog.initOwner(owner);
+        }
+
+        ButtonType createButtonType = new ButtonType("Creer", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(createButtonType, ButtonType.CANCEL);
+
+        TextField nameField = new TextField();
+        nameField.setPromptText("Nom de l'album");
+
+        List<CheckBox> checkBoxes = activePhotos.stream()
+                .map(photo -> {
+                    CheckBox box = new CheckBox(photo.title());
+                    box.setSelected(true);
+                    box.setUserData(photo);
+                    return box;
+                })
+                .collect(Collectors.toList());
+
+        VBox itemsBox = new VBox(6);
+        itemsBox.getChildren().addAll(checkBoxes);
+
+        ScrollPane scrollPane = new ScrollPane(itemsBox);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setPrefViewportHeight(Math.min(240, 30 * checkBoxes.size() + 10));
+
+        VBox content = new VBox(10,
+                new Label("Nom de l'album"),
+                nameField,
+                new Label("Photos a inclure"),
+                scrollPane);
+        content.setPadding(new Insets(10));
+
+        dialog.getDialogPane().setContent(content);
+
+        Node createButton = dialog.getDialogPane().lookupButton(createButtonType);
+        updateCreateAlbumButtonState(createButton, nameField, checkBoxes);
+
+        nameField.textProperty().addListener((obs, oldVal, newVal) ->
+                updateCreateAlbumButtonState(createButton, nameField, checkBoxes));
+        checkBoxes.forEach(box -> box.selectedProperty().addListener((obs, oldVal, newVal) ->
+                updateCreateAlbumButtonState(createButton, nameField, checkBoxes)));
+
+        dialog.setResultConverter(buttonType -> {
+            if (buttonType == createButtonType) {
+                List<PhotoItem> selection = checkBoxes.stream()
+                        .filter(CheckBox::isSelected)
+                        .map(box -> (PhotoItem) box.getUserData())
+                        .toList();
+                return new AlbumSelection(nameField.getText().trim(), selection);
+            }
+            return null;
+        });
+        return dialog;
+    }
+
+    private void updateCreateAlbumButtonState(Node createButton, TextField nameField, List<CheckBox> checkBoxes) {
+        if (createButton == null) {
+            return;
+        }
+        boolean hasName = nameField.getText() != null && !nameField.getText().trim().isEmpty();
+        boolean hasSelection = checkBoxes.stream().anyMatch(CheckBox::isSelected);
+        createButton.setDisable(!hasName || !hasSelection);
+    }
+
+    private void showToast(Window owner, String message) {
+        if (owner == null) {
+            log.info(message);
+            return;
+        }
+        Label toast = new Label(message);
+        toast.getStyleClass().add("toast");
+        toast.setStyle("-fx-background-color: rgba(0,0,0,0.8); -fx-text-fill: white; -fx-padding: 10px; -fx-background-radius: 6px;");
+
+        Popup popup = new Popup();
+        popup.setAutoHide(true);
+        popup.getContent().add(toast);
+        popup.show(owner);
+
+        PauseTransition delay = new PauseTransition(Duration.seconds(2.5));
+        delay.setOnFinished(event -> popup.hide());
+        delay.play();
+    }
+
+    static class AlbumSelection {
+        private final String name;
+        private final List<PhotoItem> photos;
+
+        AlbumSelection(String name, List<PhotoItem> photos) {
+            this.name = name == null ? "" : name;
+            this.photos = photos == null ? List.of() : List.copyOf(photos);
+        }
+
+        public String name() {
+            return name;
+        }
+
+        public List<PhotoItem> photos() {
+            return photos;
+        }
     }
 
     private void handleExport(Window owner) {

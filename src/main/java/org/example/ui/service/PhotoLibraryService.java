@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class PhotoLibraryService {
@@ -46,6 +47,38 @@ public class PhotoLibraryService {
             items.addAll(enrichAlbums(newItems));
         }
         log.info("Bibliotheque mise a jour: {} elements", items.size());
+    }
+
+    public synchronized List<PhotoItem> createAlbum(String albumName, List<PhotoItem> photos) {
+        if (albumName == null || albumName.isBlank()) {
+            log.warn("Creation d'album ignoree: nom vide");
+            return List.copyOf(items);
+        }
+        if (photos == null || photos.isEmpty()) {
+            log.warn("Creation d'album ignoree: aucune photo selectionnee");
+            return List.copyOf(items);
+        }
+
+        String normalized = albumName.trim();
+        Set<Path> selectedPaths = photos.stream()
+                .map(PhotoItem::path)
+                .collect(Collectors.toSet());
+
+        for (int i = 0; i < items.size(); i++) {
+            PhotoItem current = items.get(i);
+            if (selectedPaths.contains(current.path())) {
+                List<String> albums = new ArrayList<>(current.albums());
+                boolean alreadyPresent = albums.stream()
+                        .anyMatch(existing -> existing.equalsIgnoreCase(normalized));
+                if (!alreadyPresent) {
+                    albums.add(normalized);
+                    items.set(i, new PhotoItem(current.path(), current.title(), current.date(), current.sizeLabel(),
+                            current.tags(), albums, current.favorite()));
+                }
+            }
+        }
+        log.info("Album '{}' cree avec {} photos", normalized, selectedPaths.size());
+        return List.copyOf(items);
     }
 
     public enum Filter {
