@@ -14,11 +14,13 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.function.BooleanSupplier;
+import java.util.function.LongConsumer;
 import java.util.stream.Stream;
 
 public class PhotoFileScanner {
@@ -30,25 +32,51 @@ public class PhotoFileScanner {
     }
 
     public List<PhotoItem> scan(List<Path> roots) {
+        return scan(roots, () -> false, null);
+    }
+
+    public List<PhotoItem> scan(Path root, BooleanSupplier cancelSignal, LongConsumer progressCallback) {
+        return scan(List.of(root), cancelSignal, progressCallback);
+    }
+
+    public List<PhotoItem> scan(List<Path> roots, BooleanSupplier cancelSignal, LongConsumer progressCallback) {
         if (roots == null || roots.isEmpty()) {
             log.warn("Scan ignore: aucune racine fournie");
             return List.of();
         }
+        BooleanSupplier shouldCancel = cancelSignal != null ? cancelSignal : () -> false;
+        LongConsumer progress = progressCallback != null ? progressCallback : count -> { };
         List<PhotoItem> aggregated = new ArrayList<>();
+        long visited = 0;
         for (Path root : roots) {
+            if (shouldCancel.getAsBoolean()) {
+                break;
+            }
             if (root == null || !Files.isDirectory(root)) {
                 log.warn("Racine ignoree car invalide: {}", root);
                 continue;
             }
+            int itemsBefore = aggregated.size();
             try (Stream<Path> walk = Files.walk(root)) {
-                List<PhotoItem> items = walk
-                        .filter(Files::isRegularFile)
-                        .filter(this::isImage)
-                        .map(path -> toPhotoSafe(root, path))
-                        .flatMap(Optional::stream)
-                        .collect(Collectors.toList());
-                log.info("Scan termine: {} fichiers images dans {}", items.size(), root);
-                aggregated.addAll(items);
+                Iterator<Path> iterator = walk.iterator();
+                while (iterator.hasNext() && !shouldCancel.getAsBoolean()) {
+                    Path path = iterator.next();
+                    if (!Files.isRegularFile(path)) {
+                        continue;
+                    }
+                    visited++;
+                    progress.accept(visited);
+                    if (!isImage(path)) {
+                        continue;
+                    }
+                    toPhotoSafe(root, path).ifPresent(aggregated::add);
+                }
+                if (shouldCancel.getAsBoolean()) {
+                    log.info("Scan interrompu a la demande apres {} fichiers parcourus", visited);
+                    break;
+                }
+                int rootAdded = aggregated.size() - itemsBefore;
+                log.info("Scan termine: {} fichiers images dans {}", rootAdded, root);
             } catch (IOException e) {
                 log.error("Echec du scan du dossier {}", root, e);
             }
