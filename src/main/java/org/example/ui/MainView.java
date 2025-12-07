@@ -74,6 +74,7 @@ public class MainView {
     private final ToggleGroup filterGroup;
     private final TextField searchField;
     private final Label statusLabel;
+    private final Label gridTitleLabel;
 
     public MainView() {
         this(new PhotoLibraryService(), new PhotoFileScanner(), new ThumbnailService(), new ExportService());
@@ -93,6 +94,7 @@ public class MainView {
         this.filterGroup = new ToggleGroup();
         this.searchField = new TextField();
         this.statusLabel = new Label("Aucune photo importee");
+        this.gridTitleLabel = new Label("Toutes vos photos scannees (0)");
         root.getStyleClass().add("app-root");
         root.setTop(buildHeader());
         root.setLeft(buildSidebar());
@@ -247,15 +249,14 @@ public class MainView {
     private Node buildGrid() {
         VBox wrapper = new VBox(8);
         wrapper.getStyleClass().add("grid-wrapper");
-        Label label = new Label("Vos photos en vedette");
-        label.getStyleClass().add("section-title");
+        gridTitleLabel.getStyleClass().addAll("section-title", "grid-title");
 
         grid.setPrefColumns(4);
         grid.setHgap(12);
         grid.setVgap(12);
         grid.getStyleClass().add("gallery-grid");
 
-        wrapper.getChildren().addAll(label, grid);
+        wrapper.getChildren().addAll(gridTitleLabel, grid);
         return wrapper;
     }
 
@@ -421,10 +422,16 @@ public class MainView {
         refreshThrottle.playFromStart();
     }
 
+    private void refreshGridImmediately() {
+        refreshThrottle.stop();
+        refreshGrid();
+    }
+
     private void refreshGrid() {
         Filter activeFilter = getActiveFilter();
         String search = searchField.getText();
         List<PhotoItem> filtered = photoService.filter(search, activeFilter);
+        updateGridHeader(filtered.size(), photoService.all().size());
         if (filtered.isEmpty()) {
             boolean emptyLibrary = photoService.all().isEmpty();
             grid.getChildren().setAll(buildEmptyState(emptyLibrary));
@@ -460,6 +467,16 @@ public class MainView {
         log.info("Grid rafraichie: {} elements (filtre={}, recherche='{}')",
                 grid.getChildren().size(), activeFilter, search == null ? "" : search.trim());
         statusLabel.setText("Affichage: " + grid.getChildren().size() + " photos");
+    }
+
+    private void updateGridHeader(int displayedCount, int totalCount) {
+        StringBuilder builder = new StringBuilder("Toutes vos photos scannees");
+        builder.append(" (").append(displayedCount);
+        if (totalCount >= 0 && totalCount != displayedCount) {
+            builder.append(" / ").append(totalCount);
+        }
+        builder.append(")");
+        gridTitleLabel.setText(builder.toString());
     }
 
     private Node buildEmptyState(boolean emptyLibrary) {
@@ -967,13 +984,13 @@ public class MainView {
         Optional<ScanSelection> selection = dialog == null ? Optional.empty() : dialog.showAndWait();
         selection.ifPresent(choice -> {
             PhotoLibraryService.AddResult addResult = photoService.addPhotos(choice.photos(), choice.album());
-            requestRefresh();
+            refreshGridImmediately();
             String albumLabel = addResult.affectedAlbums().isEmpty()
                     ? "aucun album"
                     : String.join(", ", addResult.affectedAlbums());
             int duplicateReport = (int) Math.max(addResult.duplicateCount(), duplicatesDetected);
             String message = String.format(Locale.ROOT,
-                    "%d photos ajoutees (%s). %d doublon(s) ignore(s).",
+                    "%d photos ajoutees (%s). %d doublon(s) ignore(s). Photos visibles dans la grille.",
                     addResult.addedCount(), albumLabel, duplicateReport);
             statusLabel.setText(message);
             showToast(owner, message);
@@ -1173,11 +1190,14 @@ public class MainView {
             PhotoFileScanner.ScanResult result = task.getValue();
             List<PhotoItem> items = result.photos();
             photoService.replaceAll(items);
-            requestRefresh();
+            refreshGridImmediately();
             String message = items.isEmpty()
                     ? "Aucune image trouvee dans le dossier"
-                    : "Import reussi: " + items.size() + " photos";
+                    : "Import reussi: " + items.size() + " photos visibles dans la grille";
             statusLabel.setText(message);
+            if (!items.isEmpty()) {
+                showToast(owner, message);
+            }
             showSkippedSummary(owner, result.skippedDirectories());
             log.info("Import termine depuis {}", root);
         });

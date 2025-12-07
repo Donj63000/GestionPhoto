@@ -267,7 +267,32 @@ class MainViewTest {
                 .orElseThrow();
         assertTrue(added.albums().stream().anyMatch(name -> name.equalsIgnoreCase("Album Test FX")),
                 "Chosen album should be applied to the added photo");
-        assertEquals("1 photos ajoutees (Album Test FX). 1 doublon(s) ignore(s).", findStatusLabel(view.getRoot()).getText());
+        assertEquals("1 photos ajoutees (Album Test FX). 1 doublon(s) ignore(s). Photos visibles dans la grille.",
+                findStatusLabel(view.getRoot()).getText());
+    }
+
+    @Test
+    void shouldRefreshGridAndTitleAfterScanResults() throws Exception {
+        PhotoLibraryService service = new PhotoLibraryService();
+        List<PhotoItem> scanned = List.of(
+                new PhotoItem(Path.of("imports/photo1.jpg"), "Photo 1", LocalDate.now(), "1 MB", List.of(), List.of(), false),
+                new PhotoItem(Path.of("imports/photo2.jpg"), "Photo 2", LocalDate.now(), "1 MB", List.of(), List.of(), false)
+        );
+
+        Dialog<MainView.ScanSelection> dialog = new Dialog<>();
+        dialog.setResult(new MainView.ScanSelection(scanned, ""));
+        dialog.setOnShowing(event -> Platform.runLater(dialog::close));
+
+        ScanSelectionTestView view = new ScanSelectionTestView(service, dialog);
+        runOnFxThread(() -> view.handleScanResults(null, new PhotoFileScanner.ScanResult(scanned, List.of())));
+
+        TilePane grid = extractGrid(view.getRoot());
+        Label gridTitle = findGridTitle(view.getRoot());
+
+        assertEquals(2, grid.getChildren().size(), "Grid should show the scanned items");
+        assertTrue(gridTitle.getText().contains("2"), "Grid title should display the scanned count");
+        assertTrue(findStatusLabel(view.getRoot()).getText().contains("Photos visibles"),
+                "Status label should confirm visibility in the grid");
     }
 
     static Button findButton(Node root, String label, String cssClass) {
@@ -281,6 +306,10 @@ class MainViewTest {
 
     static Label findStatusLabel(Node root) {
         return (Label) root.lookup(".status-label");
+    }
+
+    static Label findGridTitle(Node root) {
+        return (Label) root.lookup(".grid-title");
     }
 
     private static TilePane extractGrid(Node root) {
