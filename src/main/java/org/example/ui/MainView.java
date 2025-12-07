@@ -20,6 +20,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.image.ImageView;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -241,6 +242,11 @@ public class MainView {
         VBox card = new VBox(8);
         card.getStyleClass().add("photo-card");
         card.setPadding(new Insets(10));
+        card.setOnMouseClicked(event -> {
+            if (event.getClickCount() == 1) {
+                showPhotoDetails(item, card.getScene() == null ? null : card.getScene().getWindow());
+            }
+        });
 
         StackPane thumbWrapper = new StackPane();
         thumbWrapper.getStyleClass().add("photo-thumb");
@@ -267,8 +273,62 @@ public class MainView {
         Label info = new Label(meta);
         info.getStyleClass().add("photo-meta");
 
-        card.getChildren().addAll(thumbWrapper, name, info);
+        Button favoriteButton = new Button(item.favorite() ? "★" : "☆");
+        favoriteButton.getStyleClass().add("favorite-toggle");
+        favoriteButton.setOnAction(event -> {
+            boolean nowFavorite = photoService.toggleFavorite(item.path());
+            refreshGrid();
+            statusLabel.setText(nowFavorite ? "Ajoute aux favoris" : "Retire des favoris");
+            event.consume();
+        });
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox header = new HBox(8, name, spacer, favoriteButton);
+        header.setAlignment(Pos.CENTER_LEFT);
+
+        card.getChildren().addAll(thumbWrapper, header, info);
         return card;
+    }
+
+    private void showPhotoDetails(PhotoItem item, Window owner) {
+        Dialog<Void> dialog = buildPhotoDetailDialog(item, owner);
+        if (dialog != null) {
+            dialog.showAndWait();
+        }
+    }
+
+    protected Dialog<Void> buildPhotoDetailDialog(PhotoItem item, Window owner) {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle(item.title());
+        dialog.setHeaderText("Informations de la photo");
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+        if (owner != null) {
+            dialog.initOwner(owner);
+        }
+
+        ImageView preview = new ImageView();
+        preview.setFitWidth(380);
+        preview.setPreserveRatio(true);
+        preview.setSmooth(true);
+        if (Files.exists(item.path())) {
+            thumbnailService.load(item.path(), 640, preview::setImage,
+                    ex -> log.warn("Apercu indisponible pour {}", item.path().getFileName()));
+        }
+
+        Label sizeLabel = new Label("Taille : " + item.sizeLabel());
+        sizeLabel.getStyleClass().add("photo-detail-meta");
+        Label tagLabel = new Label("Tags : " + (item.tags().isEmpty() ? "Aucun" : String.join(", ", item.tags())));
+        tagLabel.getStyleClass().add("photo-detail-meta");
+        Label albumLabel = new Label("Albums : " + (item.albums().isEmpty() ? "Aucun" : String.join(", ", item.albums())));
+        albumLabel.getStyleClass().add("photo-detail-meta");
+        Label pathLabel = new Label("Chemin : " + item.path());
+        pathLabel.getStyleClass().add("photo-detail-meta");
+
+        VBox content = new VBox(10, preview, sizeLabel, tagLabel, albumLabel, pathLabel);
+        content.setPadding(new Insets(10));
+        dialog.getDialogPane().setContent(content);
+        return dialog;
     }
 
     private ToggleButton buildFilterChip(String label, Filter filter) {

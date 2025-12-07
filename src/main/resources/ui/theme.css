@@ -200,3 +200,20 @@
     -fx-text-fill: #b7c4da;
     -fx-font-size: 12px;
 }
+
+.favorite-toggle {
+    -fx-background-color: rgba(255, 255, 255, 0.06);
+    -fx-text-fill: #ffdd55;
+    -fx-border-radius: 50%;
+    -fx-background-radius: 50%;
+    -fx-padding: 4 8 4 8;
+}
+
+.favorite-toggle:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.15);
+}
+
+.photo-detail-meta {
+    -fx-text-fill: #e8eefc;
+    -fx-font-size: 13px;
+}
