@@ -70,6 +70,25 @@ class MainViewTest {
     }
 
     @Test
+    void shouldFilterAlbums() {
+        MainView view = new MainView();
+        TilePane grid = (TilePane) ((VBox) ((ScrollPane) view.getRoot().getCenter())
+                .getContent()).getChildren().get(1).lookup(".gallery-grid");
+        int total = grid.getChildren().size();
+
+        view.getRoot().lookupAll(".filter-chip").stream()
+                .filter(node -> node instanceof ToggleButton)
+                .map(node -> (ToggleButton) node)
+                .filter(btn -> "Albums".equals(btn.getText()))
+                .findFirst()
+                .ifPresent(ToggleButton::fire);
+
+        int albumsCount = grid.getChildren().size();
+        assertTrue(albumsCount > 0, "Albums grid should display items");
+        assertTrue(albumsCount < total, "Albums filter should reduce grid to album-backed photos");
+    }
+
+    @Test
     void shouldTriggerImportFromSidebarButton() throws Exception {
         AtomicBoolean chooserCalled = new AtomicBoolean(false);
         DirectoryChooser chooser = new DirectoryChooser() {

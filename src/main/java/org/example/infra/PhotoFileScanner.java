@@ -11,6 +11,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -32,7 +33,7 @@ public class PhotoFileScanner {
             List<PhotoItem> items = walk
                     .filter(Files::isRegularFile)
                     .filter(this::isImage)
-                    .map(this::toPhotoSafe)
+                    .map(path -> toPhotoSafe(root, path))
                     .flatMap(Optional::stream)
                     .collect(Collectors.toList());
             log.info("Scan termine: {} fichiers images dans {}", items.size(), root);
@@ -43,7 +44,7 @@ public class PhotoFileScanner {
         }
     }
 
-    private Optional<PhotoItem> toPhotoSafe(Path file) {
+    private Optional<PhotoItem> toPhotoSafe(Path root, Path file) {
         try {
             BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
             long size = attrs.size();
@@ -51,11 +52,30 @@ public class PhotoFileScanner {
                     .atZone(ZoneId.systemDefault()).toLocalDate();
             String title = file.getFileName().toString();
             String sizeLabel = humanSize(size);
-            return Optional.of(new PhotoItem(file, title, date, sizeLabel, List.of(), false));
+            List<String> albums = extractAlbums(root, file);
+            return Optional.of(new PhotoItem(file, title, date, sizeLabel, List.of(), albums, false));
         } catch (IOException e) {
             log.warn("Lecture ignoree pour {}: {}", file, e.getMessage());
             return Optional.empty();
         }
+    }
+
+    private List<String> extractAlbums(Path root, Path file) {
+        if (root == null || file == null) {
+            return List.of();
+        }
+        Path relative = root.relativize(file).getParent();
+        if (relative == null || relative.getNameCount() == 0) {
+            return List.of();
+        }
+        List<String> albums = new ArrayList<>();
+        for (int i = 0; i < relative.getNameCount(); i++) {
+            String name = relative.getName(i).toString();
+            if (!name.isBlank()) {
+                albums.add(name);
+            }
+        }
+        return albums;
     }
 
     private boolean isImage(Path path) {

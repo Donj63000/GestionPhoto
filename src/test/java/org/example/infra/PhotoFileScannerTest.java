@@ -19,7 +19,8 @@ class PhotoFileScannerTest {
 
     @Test
     void shouldScanOnlyImageFiles() throws IOException {
-        Path photo1 = Files.createFile(tempDir.resolve("photo1.jpg"));
+        Path albumDir = Files.createDirectories(tempDir.resolve("AlbumOne"));
+        Path photo1 = Files.createFile(albumDir.resolve("photo1.jpg"));
         Path photo2 = Files.createFile(tempDir.resolve("photo2.PNG"));
         Files.createFile(tempDir.resolve("document.txt"));
 
@@ -33,5 +34,11 @@ class PhotoFileScannerTest {
                 "Path of first image should be preserved");
         assertTrue(items.stream().anyMatch(item -> item.path().equals(photo2)),
                 "Path of second image should be preserved");
+        assertTrue(items.stream().anyMatch(item -> item.path().equals(photo1)
+                        && item.albums().contains("AlbumOne")),
+                "First image should keep its parent folder as album");
+        assertTrue(items.stream().anyMatch(item -> item.path().equals(photo2)
+                        && item.albums().isEmpty()),
+                "Image at root should not be assigned to an album");
     }
 }
