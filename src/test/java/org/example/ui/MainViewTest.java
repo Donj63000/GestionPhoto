@@ -12,6 +12,8 @@ import javafx.scene.layout.TilePane;
 import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Window;
+import javafx.scene.input.MouseButton;
+import javafx.scene.input.MouseEvent;
 import org.example.infra.ExportService;
 import org.example.infra.PhotoFileScanner;
 import org.example.infra.ThumbnailService;
@@ -26,6 +28,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import java.io.File;
 
@@ -145,6 +148,21 @@ class MainViewTest {
     }
 
     @Test
+    void shouldShowDetailDialogOnCardClick() throws Exception {
+        DetailTestView view = new DetailTestView();
+        TilePane grid = extractGrid(view.getRoot());
+        VBox card = (VBox) grid.getChildren().get(0);
+
+        runOnFxThread(() -> card.getOnMouseClicked().handle(new MouseEvent(MouseEvent.MOUSE_CLICKED,
+                0, 0, 0, 0, MouseButton.PRIMARY, 1,
+                false, false, false, false,
+                true, false, false, true, false, false, null)));
+
+        assertTrue(view.detailShown.get(), "Detail dialog should be requested on click");
+        assertNotNull(view.capturedItem, "Clicked item should be captured for details");
+    }
+
+    @Test
     void shouldCreateAlbumFromDialogAndRefreshGrid() throws Exception {
         PhotoLibraryService service = new PhotoLibraryService();
         List<PhotoItem> selection = service.filter("", PhotoLibraryService.Filter.ALL)
@@ -185,6 +203,40 @@ class MainViewTest {
         assertEquals("Export annule", findStatusLabel(view.getRoot()).getText());
     }
 
+    @Test
+    void shouldToggleFavoriteAndRefreshFilters() throws Exception {
+        PhotoLibraryService service = new PhotoLibraryService();
+        PhotoItem target = service.all().stream()
+                .filter(item -> !item.favorite())
+                .findFirst()
+                .orElseThrow();
+
+        FavoriteTestView view = new FavoriteTestView(service);
+        TilePane grid = extractGrid(view.getRoot());
+        VBox card = findCardByTitle(grid, target.title());
+        Button favoriteButton = (Button) card.lookup(".favorite-toggle");
+
+        runOnFxThread(favoriteButton::fire);
+
+        ToggleButton favoritesFilter = view.getRoot().lookupAll(".filter-chip").stream()
+                .filter(node -> node instanceof ToggleButton)
+                .map(node -> (ToggleButton) node)
+                .filter(btn -> "Favoris".equals(btn.getText()))
+                .findFirst()
+                .orElseThrow();
+        runOnFxThread(favoritesFilter::fire);
+
+        assertTrue(grid.getChildren().stream().anyMatch(node -> containsTitle(node, target.title())),
+                "Toggled favorite should appear when favorites filter is active");
+
+        VBox favoriteCard = findCardByTitle(grid, target.title());
+        Button toggleBack = (Button) favoriteCard.lookup(".favorite-toggle");
+        runOnFxThread(toggleBack::fire);
+
+        assertTrue(grid.getChildren().stream().noneMatch(node -> containsTitle(node, target.title())),
+                "Removing favorite while filter is active should hide the card");
+    }
+
     static Button findButton(Node root, String label, String cssClass) {
         return root.lookupAll(cssClass).stream()
                 .filter(node -> node instanceof Button)
@@ -198,6 +250,11 @@ class MainViewTest {
         return (Label) root.lookup(".status-label");
     }
 
+    private static TilePane extractGrid(Node root) {
+        return (TilePane) ((VBox) ((ScrollPane) root.lookup(".content-scroll")).getContent())
+                .getChildren().get(1).lookup(".gallery-grid");
+    }
+
     private static String getSelectedFilterLabel(MainView view) {
         return view.getRoot().lookupAll(".filter-chip").stream()
                 .filter(node -> node instanceof ToggleButton)
@@ -206,6 +263,25 @@ class MainViewTest {
                 .map(ToggleButton::getText)
                 .findFirst()
                 .orElse("");
+    }
+
+    private static VBox findCardByTitle(TilePane grid, String title) {
+        return grid.getChildren().stream()
+                .filter(node -> node instanceof VBox)
+                .map(node -> (VBox) node)
+                .filter(node -> containsTitle(node, title))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private static boolean containsTitle(Node node, String title) {
+        AtomicReference<String> found = new AtomicReference<>(null);
+        node.lookupAll(".photo-title").forEach(label -> {
+            if (label instanceof Label && title.equals(((Label) label).getText())) {
+                found.set(title);
+            }
+        });
+        return found.get() != null;
     }
 
     static void runOnFxThread(Runnable action) throws Exception {
@@ -242,6 +318,27 @@ class MainViewTest {
         @Override
         protected Dialog<AlbumSelection> buildAlbumDialog(Window owner, List<PhotoItem> activePhotos) {
             return dialog;
+        }
+    }
+
+    private static class DetailTestView extends MainView {
+        final AtomicBoolean detailShown = new AtomicBoolean(false);
+        PhotoItem capturedItem;
+
+        @Override
+        protected Dialog<Void> buildPhotoDetailDialog(PhotoItem item, Window owner) {
+            capturedItem = item;
+            detailShown.set(true);
+            Dialog<Void> dialog = new Dialog<>();
+            dialog.setResult(null);
+            dialog.setOnShowing(event -> Platform.runLater(dialog::close));
+            return dialog;
+        }
+    }
+
+    private static class FavoriteTestView extends MainView {
+        FavoriteTestView(PhotoLibraryService service) {
+            super(service, new PhotoFileScanner(), new ThumbnailService(), new ExportService());
         }
     }
 }

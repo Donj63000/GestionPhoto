@@ -49,6 +49,25 @@ public class PhotoLibraryService {
         log.info("Bibliotheque mise a jour: {} elements", items.size());
     }
 
+    public synchronized boolean toggleFavorite(Path path) {
+        if (path == null) {
+            log.warn("Impossible de basculer le favori: chemin null");
+            return false;
+        }
+        for (int i = 0; i < items.size(); i++) {
+            PhotoItem current = items.get(i);
+            if (current.path().equals(path)) {
+                boolean newStatus = !current.favorite();
+                items.set(i, new PhotoItem(current.path(), current.title(), current.date(), current.sizeLabel(),
+                        current.tags(), current.albums(), newStatus));
+                log.info("Statut favori mis a jour pour {}: {}", path.getFileName(), newStatus);
+                return newStatus;
+            }
+        }
+        log.warn("Photo introuvable pour basculer le favori: {}", path);
+        return false;
+    }
+
     public synchronized List<PhotoItem> createAlbum(String albumName, List<PhotoItem> photos) {
         if (albumName == null || albumName.isBlank()) {
             log.warn("Creation d'album ignoree: nom vide");
