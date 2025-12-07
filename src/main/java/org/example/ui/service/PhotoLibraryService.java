@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -16,6 +17,8 @@ import java.util.stream.Collectors;
 
 public class PhotoLibraryService {
     private static final Logger log = LoggerFactory.getLogger(PhotoLibraryService.class);
+    private static final Comparator<PhotoItem> MOST_RECENT = Comparator.comparing(PhotoItem::date).reversed()
+            .thenComparing(PhotoItem::title, String.CASE_INSENSITIVE_ORDER);
     private final List<PhotoItem> items;
 
     public PhotoLibraryService() {
@@ -24,9 +27,7 @@ public class PhotoLibraryService {
     }
 
     public synchronized List<PhotoItem> all() {
-        return items.stream()
-                .sorted(byMostRecent())
-                .toList();
+        return List.copyOf(items);
     }
 
     public synchronized List<PhotoItem> filter(String search, Filter preset) {
@@ -39,17 +40,17 @@ public class PhotoLibraryService {
                     case ALL -> true;
                 })
                 .filter(item -> normalized.isEmpty()
-                        || item.title().toLowerCase(Locale.ROOT).contains(normalized)
-                        || item.tags().stream().anyMatch(tag -> tag.toLowerCase(Locale.ROOT).contains(normalized))
-                        || item.albums().stream().anyMatch(album -> album.toLowerCase(Locale.ROOT).contains(normalized)))
-                .sorted(byMostRecent())
-                .collect(Collectors.toList());
+                        || item.normalizedTitle().contains(normalized)
+                        || item.normalizedTags().stream().anyMatch(tag -> tag.contains(normalized))
+                        || item.normalizedAlbums().stream().anyMatch(album -> album.contains(normalized)))
+                .toList();
     }
 
     public synchronized void replaceAll(List<PhotoItem> newItems) {
         items.clear();
         if (newItems != null) {
             items.addAll(enrichAlbums(newItems));
+            items.sort(MOST_RECENT);
         }
         log.info("Bibliotheque mise a jour: {} elements", items.size());
     }
@@ -81,8 +82,9 @@ public class PhotoLibraryService {
                 albums = new ArrayList<>(albums);
                 albums.add(normalizedAlbum);
             }
-            items.add(new PhotoItem(candidate.path(), candidate.title(), candidate.date(), candidate.sizeLabel(),
-                    candidate.tags(), albums, candidate.favorite()));
+            PhotoItem enriched = new PhotoItem(candidate.path(), candidate.title(), candidate.date(), candidate.sizeLabel(),
+                    candidate.tags(), albums, candidate.favorite());
+            insertSorted(enriched);
             existingPaths.add(candidate.path());
         }
 
@@ -151,11 +153,6 @@ public class PhotoLibraryService {
         return List.copyOf(items);
     }
 
-    private Comparator<PhotoItem> byMostRecent() {
-        return Comparator.comparing(PhotoItem::date).reversed()
-                .thenComparing(PhotoItem::title, String.CASE_INSENSITIVE_ORDER);
-    }
-
     public record AddResult(int addedCount, int duplicateCount, Set<String> affectedAlbums) { }
 
     public enum Filter {
@@ -172,6 +169,14 @@ public class PhotoLibraryService {
                         : new PhotoItem(item.path(), item.title(), item.date(), item.sizeLabel(), item.tags(),
                         deriveAlbumFromPath(item.path()), item.favorite()))
                 .toList();
+    }
+
+    private void insertSorted(PhotoItem item) {
+        int index = Collections.binarySearch(items, item, MOST_RECENT);
+        if (index < 0) {
+            index = -index - 1;
+        }
+        items.add(index, item);
     }
 
     private List<String> deriveAlbumFromPath(Path path) {
