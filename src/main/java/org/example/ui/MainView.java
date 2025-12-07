@@ -69,12 +69,18 @@ public class MainView {
     private final ThumbnailService thumbnailService;
     private final ExportService exportService;
     private final TilePane grid;
+    private final Button previousPageButton;
+    private final Button nextPageButton;
+    private final Label pageIndicator;
     private final Map<Path, PhotoCard> cardCache;
     private final PauseTransition refreshThrottle;
     private final ToggleGroup filterGroup;
     private final TextField searchField;
     private final Label statusLabel;
     private final Label gridTitleLabel;
+    private int currentPage = 1;
+    private int totalPages = 1;
+    private static final int PAGE_SIZE = 20;
 
     public MainView() {
         this(new PhotoLibraryService(), new PhotoFileScanner(), new ThumbnailService(), new ExportService());
@@ -89,6 +95,9 @@ public class MainView {
         this.exportService = exportService;
         this.grid = new TilePane();
         this.cardCache = new LinkedHashMap<>();
+        this.previousPageButton = new Button("◀");
+        this.nextPageButton = new Button("▶");
+        this.pageIndicator = new Label();
         this.refreshThrottle = new PauseTransition(Duration.millis(280));
         this.refreshThrottle.setOnFinished(event -> refreshGrid());
         this.filterGroup = new ToggleGroup();
@@ -142,7 +151,10 @@ public class MainView {
         searchField.setPromptText("Rechercher par nom, tag ou date...");
         searchField.getStyleClass().add("search-field");
         searchField.setPrefHeight(40);
-        searchField.textProperty().addListener((obs, oldVal, newVal) -> requestRefresh());
+        searchField.textProperty().addListener((obs, oldVal, newVal) -> {
+            resetPagination();
+            requestRefresh();
+        });
 
         HBox filters = new HBox(10,
                 buildFilterChip("Tous", Filter.ALL),
@@ -234,6 +246,7 @@ public class MainView {
                     .filter(t -> t.getUserData() == Filter.FAVORITES)
                     .findFirst()
                     .ifPresent(t -> t.setSelected(true));
+            resetPagination();
             requestRefresh();
         });
 
@@ -250,13 +263,23 @@ public class MainView {
         VBox wrapper = new VBox(8);
         wrapper.getStyleClass().add("grid-wrapper");
         gridTitleLabel.getStyleClass().addAll("section-title", "grid-title");
+        pageIndicator.getStyleClass().add("page-indicator");
+        previousPageButton.getStyleClass().addAll("ghost-button", "page-button");
+        nextPageButton.getStyleClass().addAll("ghost-button", "page-button");
+        previousPageButton.setOnAction(event -> goToPreviousPage());
+        nextPageButton.setOnAction(event -> goToNextPage());
+        previousPageButton.setMinHeight(30);
+        nextPageButton.setMinHeight(30);
+
+        HBox gridHeader = new HBox(10, gridTitleLabel, previousPageButton, pageIndicator, nextPageButton);
+        gridHeader.setAlignment(Pos.CENTER_LEFT);
 
         grid.setPrefColumns(4);
         grid.setHgap(12);
         grid.setVgap(12);
         grid.getStyleClass().add("gallery-grid");
 
-        wrapper.getChildren().addAll(gridTitleLabel, grid);
+        wrapper.getChildren().addAll(gridHeader, grid);
         return wrapper;
     }
 
@@ -385,7 +408,10 @@ public class MainView {
         button.setMinHeight(32);
         button.setToggleGroup(filterGroup);
         button.setUserData(filter);
-        button.setOnAction(event -> requestRefresh());
+        button.setOnAction(event -> {
+            resetPagination();
+            requestRefresh();
+        });
         if (filter == Filter.ALL) {
             button.setSelected(true);
         }
@@ -415,6 +441,7 @@ public class MainView {
                 .findFirst()
                 .ifPresent(toggle -> toggle.setSelected(true));
         log.info("Navigation vers {}", filter);
+        resetPagination();
         requestRefresh();
     }
 
@@ -427,12 +454,37 @@ public class MainView {
         refreshGrid();
     }
 
+    private void resetPagination() {
+        currentPage = 1;
+    }
+
+    private void goToPreviousPage() {
+        if (currentPage > 1) {
+            currentPage--;
+            refreshGridImmediately();
+        }
+    }
+
+    private void goToNextPage() {
+        if (currentPage < totalPages) {
+            currentPage++;
+            refreshGridImmediately();
+        }
+    }
+
     private void refreshGrid() {
         Filter activeFilter = getActiveFilter();
         String search = searchField.getText();
         List<PhotoItem> filtered = photoService.filter(search, activeFilter);
-        updateGridHeader(filtered.size(), photoService.all().size());
-        if (filtered.isEmpty()) {
+        int totalCount = filtered.size();
+        totalPages = Math.max(1, (int) Math.ceil((double) totalCount / PAGE_SIZE));
+        if (currentPage > totalPages) {
+            currentPage = totalPages;
+        }
+        if (totalCount == 0) {
+            currentPage = 1;
+            updateGridHeader(0, 0, currentPage, totalPages);
+            updatePaginationControls();
             boolean emptyLibrary = photoService.all().isEmpty();
             grid.getChildren().setAll(buildEmptyState(emptyLibrary));
             statusLabel.setText(emptyLibrary
@@ -442,7 +494,12 @@ public class MainView {
                     activeFilter, search == null ? "" : search.trim(), emptyLibrary);
             return;
         }
-        Set<Path> filteredPaths = filtered.stream()
+
+        int fromIndex = Math.min((currentPage - 1) * PAGE_SIZE, totalCount);
+        int toIndex = Math.min(fromIndex + PAGE_SIZE, totalCount);
+        List<PhotoItem> pageItems = filtered.subList(fromIndex, toIndex);
+
+        Set<Path> filteredPaths = pageItems.stream()
                 .map(PhotoItem::path)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
 
@@ -452,7 +509,7 @@ public class MainView {
         });
 
         int index = 0;
-        for (PhotoItem item : filtered) {
+        for (PhotoItem item : pageItems) {
             PhotoCard card = cardCache.computeIfAbsent(item.path(), path -> createPhotoCard(item));
             card.updateContent(item);
             int currentIndex = grid.getChildren().indexOf(card);
@@ -464,19 +521,25 @@ public class MainView {
             }
             index++;
         }
-        log.info("Grid rafraichie: {} elements (filtre={}, recherche='{}')",
-                grid.getChildren().size(), activeFilter, search == null ? "" : search.trim());
-        statusLabel.setText("Affichage: " + grid.getChildren().size() + " photos");
+        updateGridHeader(pageItems.size(), totalCount, currentPage, totalPages);
+        updatePaginationControls();
+        log.info("Grid rafraichie: {} elements (filtre={}, recherche='{}', page {}/{})",
+                grid.getChildren().size(), activeFilter, search == null ? "" : search.trim(), currentPage, totalPages);
+        statusLabel.setText("Affichage: " + grid.getChildren().size() + " photos (page " + currentPage + "/" + totalPages + ")");
     }
 
-    private void updateGridHeader(int displayedCount, int totalCount) {
+    private void updateGridHeader(int displayedCount, int totalCount, int page, int totalPages) {
         StringBuilder builder = new StringBuilder("Toutes vos photos scannees");
-        builder.append(" (").append(displayedCount);
-        if (totalCount >= 0 && totalCount != displayedCount) {
-            builder.append(" / ").append(totalCount);
-        }
-        builder.append(")");
+        builder.append(" (").append(displayedCount).append(" / ").append(totalCount)
+                .append(" (page ").append(page).append("/").append(totalPages).append("))")
+                .append(")");
         gridTitleLabel.setText(builder.toString());
+    }
+
+    private void updatePaginationControls() {
+        pageIndicator.setText("Page " + currentPage + " / " + totalPages);
+        previousPageButton.setDisable(currentPage <= 1 || photoService.all().isEmpty());
+        nextPageButton.setDisable(currentPage >= totalPages || photoService.all().isEmpty());
     }
 
     private Node buildEmptyState(boolean emptyLibrary) {
@@ -984,6 +1047,7 @@ public class MainView {
         Optional<ScanSelection> selection = dialog == null ? Optional.empty() : dialog.showAndWait();
         selection.ifPresent(choice -> {
             PhotoLibraryService.AddResult addResult = photoService.addPhotos(choice.photos(), choice.album());
+            resetPagination();
             refreshGridImmediately();
             String albumLabel = addResult.affectedAlbums().isEmpty()
                     ? "aucun album"
@@ -1190,6 +1254,7 @@ public class MainView {
             PhotoFileScanner.ScanResult result = task.getValue();
             List<PhotoItem> items = result.photos();
             photoService.replaceAll(items);
+            resetPagination();
             refreshGridImmediately();
             String message = items.isEmpty()
                     ? "Aucune image trouvee dans le dossier"

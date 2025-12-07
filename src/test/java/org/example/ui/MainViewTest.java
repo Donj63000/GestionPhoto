@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Assumptions;
 
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -295,6 +296,36 @@ class MainViewTest {
                 "Status label should confirm visibility in the grid");
     }
 
+    @Test
+    void shouldPaginateResultsWithFixedPageSize() throws Exception {
+        PhotoLibraryService service = serviceWithManyPhotos(45);
+        MainView view = new MainView(service, new PhotoFileScanner(), new ThumbnailService(), new ExportService());
+
+        TilePane grid = extractGrid(view.getRoot());
+        Label gridTitle = findGridTitle(view.getRoot());
+        Label indicator = (Label) view.getRoot().lookup(".page-indicator");
+        Button next = findButton(view.getRoot(), "▶", ".page-button");
+        Button previous = findButton(view.getRoot(), "◀", ".page-button");
+
+        assertEquals(20, grid.getChildren().size(), "First page should display the page size");
+        assertTrue(gridTitle.getText().contains("20 / 45 (page 1/3)"));
+        assertEquals("Page 1 / 3", indicator.getText());
+
+        runOnFxThread(next::fire);
+        assertEquals(20, grid.getChildren().size(), "Second page should still display full page size");
+        assertTrue(gridTitle.getText().contains("page 2/3"));
+        assertEquals("Page 2 / 3", indicator.getText());
+
+        runOnFxThread(next::fire);
+        assertEquals(5, grid.getChildren().size(), "Last page should display remaining items only");
+        assertTrue(gridTitle.getText().contains("page 3/3"));
+        assertEquals("Page 3 / 3", indicator.getText());
+
+        runOnFxThread(previous::fire);
+        assertEquals(20, grid.getChildren().size(), "Navigating back should reload previous page");
+        assertTrue(gridTitle.getText().contains("page 2/3"));
+    }
+
     static Button findButton(Node root, String label, String cssClass) {
         return root.lookupAll(cssClass).stream()
                 .filter(node -> node instanceof Button)
@@ -320,6 +351,22 @@ class MainViewTest {
     private static PhotoLibraryService serviceWithDemoData() {
         PhotoLibraryService service = new PhotoLibraryService();
         service.replaceAll(demoPhotos());
+        return service;
+    }
+
+    private static PhotoLibraryService serviceWithManyPhotos(int count) {
+        PhotoLibraryService service = new PhotoLibraryService();
+        List<PhotoItem> items = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            items.add(new PhotoItem(Path.of("demo/bulk/photo-" + i + ".jpg"),
+                    "Photo " + i,
+                    LocalDate.now().minusDays(i),
+                    "1 MB",
+                    List.of(),
+                    List.of(),
+                    false));
+        }
+        service.replaceAll(items);
         return service;
     }
 
