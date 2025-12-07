@@ -58,6 +58,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class MainView {
     private static final Logger log = LoggerFactory.getLogger(MainView.class);
@@ -837,6 +838,7 @@ public class MainView {
                 int total = roots.size();
                 int processed = 0;
                 int photosCount = 0;
+                AtomicLong visited = new AtomicLong(0);
                 updateProgress(0, total);
                 for (Path root : roots) {
                     if (isCancelled()) {
@@ -844,12 +846,20 @@ public class MainView {
                         break;
                     }
                     updateMessage("Scan de " + root.getFileName());
-                    List<PhotoItem> rootItems = scanner.scan(List.of(root));
+                    AtomicLong rootVisited = new AtomicLong(0);
+                    List<PhotoItem> rootItems = scanner.scan(List.of(root), this::isCancelled, count -> {
+                        long totalVisited = visited.get() + count;
+                        rootVisited.set(count);
+                        updateMessage(String.format(Locale.ROOT, "Scan de %s - fichiers parcourus: %d",
+                                root.getFileName(), totalVisited));
+                    });
                     photosCount += rootItems.size();
                     aggregated.addAll(rootItems);
                     processed++;
+                    visited.addAndGet(rootVisited.get());
                     updateProgress(processed, total);
-                    updateMessage(String.format(Locale.ROOT, "%d photos trouvees", photosCount));
+                    updateMessage(String.format(Locale.ROOT, "%d photos trouvees (%d fichiers parcourus)",
+                            photosCount, visited.get()));
                 }
                 aggregated.sort((a, b) -> b.date().compareTo(a.date()));
                 return aggregated;
@@ -1066,7 +1076,11 @@ public class MainView {
         Task<List<PhotoItem>> task = new Task<>() {
             @Override
             protected List<PhotoItem> call() {
-                return scanner.scan(root);
+                AtomicLong visited = new AtomicLong(0);
+                return scanner.scan(root, this::isCancelled, count -> {
+                    visited.set(count);
+                    updateMessage(String.format(Locale.ROOT, "Fichiers parcourus: %d", count));
+                });
             }
         };
         task.setOnSucceeded(event -> {

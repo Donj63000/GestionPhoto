@@ -10,6 +10,9 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -60,5 +63,40 @@ class PhotoFileScannerTest {
         assertEquals(2, items.size(), "All images across roots should be returned");
         assertEquals(newer, items.get(0).path(), "Most recent image should come first");
         assertEquals(older, items.get(1).path(), "Older image should follow");
+    }
+
+    @Test
+    void shouldStopWhenCancellationRequested() throws IOException {
+        for (int i = 0; i < 5; i++) {
+            Files.createFile(tempDir.resolve("image-" + i + ".jpg"));
+        }
+        AtomicBoolean cancel = new AtomicBoolean(false);
+        AtomicLong visited = new AtomicLong(0);
+        PhotoFileScanner scanner = new PhotoFileScanner();
+
+        List<PhotoItem> items = scanner.scan(tempDir, cancel::get, count -> {
+            visited.set(count);
+            if (count >= 2) {
+                cancel.set(true);
+            }
+        });
+
+        assertTrue(visited.get() < 5, "Scan should stop after cancellation request");
+        assertTrue(items.size() < 5, "Not all files should be indexed once cancelled");
+    }
+
+    @Test
+    void shouldReportProgressForEachVisitedFile() throws IOException {
+        Files.createFile(tempDir.resolve("photoA.jpg"));
+        Files.createFile(tempDir.resolve("photoB.png"));
+        Files.createFile(tempDir.resolve("note.txt"));
+
+        List<Long> calls = new ArrayList<>();
+        PhotoFileScanner scanner = new PhotoFileScanner();
+
+        scanner.scan(tempDir, () -> false, calls::add);
+
+        assertEquals(3, calls.size(), "Progress should be reported for every visited file");
+        assertEquals(3, calls.get(calls.size() - 1), "Last progress value should match total visited files");
     }
 }
