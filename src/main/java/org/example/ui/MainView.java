@@ -57,8 +57,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 public class MainView {
     private static final Logger log = LoggerFactory.getLogger(MainView.class);
@@ -359,6 +359,60 @@ public class MainView {
 
         private void updateFavorite(boolean favorite) {
             favoriteButton.setText(favorite ? "★" : "☆");
+        }
+    }
+
+    private final class SelectionTile extends VBox {
+        private final CheckBox checkBox;
+        private final ImageView imageView;
+
+        SelectionTile(PhotoItem item, boolean duplicate) {
+            super(6);
+            getStyleClass().add("selection-tile");
+            setPrefWidth(180);
+            setPadding(new Insets(6));
+
+            imageView = new ImageView();
+            imageView.setFitWidth(170);
+            imageView.setFitHeight(120);
+            imageView.setPreserveRatio(true);
+            imageView.setSmooth(true);
+
+            StackPane preview = new StackPane(imageView);
+            preview.getStyleClass().add("selection-thumb");
+            preview.setMinHeight(120);
+            preview.setMaxHeight(120);
+
+            checkBox = new CheckBox();
+            checkBox.setSelected(!duplicate);
+            checkBox.setDisable(duplicate);
+            checkBox.setUserData(item);
+            StackPane.setAlignment(checkBox, Pos.TOP_LEFT);
+            preview.getChildren().add(checkBox);
+
+            Label title = new Label(item.title());
+            title.getStyleClass().add("photo-title");
+            title.setWrapText(true);
+
+            Label meta = new Label(item.date().toString());
+            meta.getStyleClass().add("photo-meta");
+
+            getChildren().addAll(preview, title, meta);
+
+            setOnMouseClicked(event -> {
+                if (!checkBox.isDisable()) {
+                    checkBox.setSelected(!checkBox.isSelected());
+                }
+            });
+
+            if (Files.exists(item.path())) {
+                thumbnailService.load(item.path(), 320, imageView::setImage,
+                        ex -> log.warn("Miniature indisponible pour {}", item.path().getFileName()));
+            }
+        }
+
+        CheckBox getCheckBox() {
+            return checkBox;
         }
     }
 
@@ -1086,27 +1140,50 @@ public class MainView {
         List<PhotoItem> sorted = new ArrayList<>(items);
         sorted.sort(byMostRecent());
 
-        Map<PhotoItem, CheckBox> checkBoxes = new LinkedHashMap<>();
-        for (PhotoItem item : sorted) {
-            boolean duplicate = photoService.contains(item.path());
-            CheckBox box = new CheckBox(item.title() + " • " + item.date());
-            box.setSelected(!duplicate);
-            box.setDisable(duplicate);
-            box.setUserData(item);
-            checkBoxes.put(item, box);
-        }
-
-        VBox itemsBox = new VBox(6);
-        ScrollPane scrollPane = new ScrollPane(itemsBox);
+        TilePane tilePane = new TilePane(10, 10);
+        tilePane.setPrefColumns(4);
+        tilePane.setPrefTileWidth(180);
+        tilePane.setPrefTileHeight(180);
+        ScrollPane scrollPane = new ScrollPane(tilePane);
         scrollPane.setFitToWidth(true);
-        scrollPane.setPrefViewportHeight(Math.min(320, 30 * checkBoxes.size() + 20));
+        scrollPane.setPrefViewportHeight(420);
 
         Label duplicateLabel = new Label();
+        Label resultsLabel = new Label();
+        Label pageLabel = new Label();
+        Button previousPage = new Button("◀");
+        Button nextPage = new Button("▶");
+        previousPage.getStyleClass().add("ghost-button");
+        nextPage.getStyleClass().add("ghost-button");
 
-        Runnable refreshList = () -> {
+        Map<PhotoItem, SelectionTile> selectionTiles = new LinkedHashMap<>();
+        for (PhotoItem item : sorted) {
+            boolean duplicate = photoService.contains(item.path());
+            SelectionTile tile = new SelectionTile(item, duplicate);
+            selectionTiles.put(item, tile);
+        }
+
+        int[] currentPage = new int[]{1};
+
+        Comparator<PhotoItem> defaultComparator = byMostRecent();
+
+        Runnable updateValidateState = () -> {
+            boolean hasSelection = selectionTiles.values().stream()
+                    .map(SelectionTile::getCheckBox)
+                    .anyMatch(cb -> cb.isSelected() && !cb.isDisable());
+            Node validateButton = dialog.getDialogPane().lookupButton(validate);
+            if (validateButton != null) {
+                validateButton.setDisable(!hasSelection);
+            }
+        };
+
+        selectionTiles.values().forEach(tile -> tile.getCheckBox().selectedProperty()
+                .addListener((obs, oldVal, newVal) -> updateValidateState.run()));
+
+        Runnable refreshGrid = () -> {
             Comparator<PhotoItem> comparator = sortChoice.getSelectionModel().getSelectedIndex() == 1
                     ? Comparator.comparing(PhotoItem::title, String.CASE_INSENSITIVE_ORDER)
-                    : byMostRecent();
+                    : defaultComparator;
             String filter = filterField.getText() == null ? "" : filterField.getText().trim().toLowerCase(Locale.ROOT);
             List<PhotoItem> filtered = sorted.stream()
                     .filter(item -> filter.isEmpty()
@@ -1114,30 +1191,54 @@ public class MainView {
                             || item.albums().stream().anyMatch(alb -> alb.toLowerCase(Locale.ROOT).contains(filter)))
                     .sorted(comparator)
                     .toList();
-            itemsBox.getChildren().setAll(filtered.stream()
-                    .map(checkBoxes::get)
-                    .toList());
-        };
-
-        filterField.textProperty().addListener((obs, oldVal, newVal) -> refreshList.run());
-        sortChoice.getSelectionModel().selectedIndexProperty().addListener((obs, oldVal, newVal) -> refreshList.run());
-        refreshList.run();
-
-        Node validateButton = dialog.getDialogPane().lookupButton(validate);
-        Runnable updateValidateState = () -> {
-            boolean hasSelection = checkBoxes.values().stream()
-                    .anyMatch(cb -> cb.isSelected() && !cb.isDisable());
-            if (validateButton != null) {
-                validateButton.setDisable(!hasSelection);
+            int total = filtered.size();
+            int totalPages = Math.max(1, (int) Math.ceil((double) total / PAGE_SIZE));
+            if (currentPage[0] > totalPages) {
+                currentPage[0] = totalPages;
             }
+            int from = Math.min((currentPage[0] - 1) * PAGE_SIZE, total);
+            int to = Math.min(from + PAGE_SIZE, total);
+            tilePane.getChildren().setAll(filtered.subList(from, to).stream()
+                    .map(selectionTiles::get)
+                    .toList());
+            resultsLabel.setText(String.format(Locale.ROOT, "%d resultat(s)", total));
+            pageLabel.setText(String.format(Locale.ROOT, "Page %d/%d", currentPage[0], totalPages));
+            previousPage.setDisable(currentPage[0] <= 1);
+            nextPage.setDisable(currentPage[0] >= totalPages);
         };
-        checkBoxes.values().forEach(cb -> cb.selectedProperty().addListener((obs, oldVal, newVal) -> updateValidateState.run()));
+
+        previousPage.setOnAction(event -> {
+            if (currentPage[0] > 1) {
+                currentPage[0]--;
+                refreshGrid.run();
+            }
+        });
+        nextPage.setOnAction(event -> {
+            currentPage[0]++;
+            refreshGrid.run();
+        });
+
+        filterField.textProperty().addListener((obs, oldVal, newVal) -> {
+            currentPage[0] = 1;
+            refreshGrid.run();
+        });
+        sortChoice.getSelectionModel().selectedIndexProperty().addListener((obs, oldVal, newVal) -> {
+            currentPage[0] = 1;
+            refreshGrid.run();
+        });
+        refreshGrid.run();
         updateValidateState.run();
 
-        long duplicates = checkBoxes.values().stream().filter(CheckBox::isDisable).count();
+        long duplicates = selectionTiles.values().stream()
+                .map(SelectionTile::getCheckBox)
+                .filter(CheckBox::isDisable)
+                .count();
         duplicateLabel.setText(duplicates == 0
                 ? "Aucun doublon detecte"
                 : duplicates + " doublon(s) detecte(s) : ils seront ignores");
+
+        HBox pagination = new HBox(8, previousPage, pageLabel, nextPage, resultsLabel);
+        pagination.setAlignment(Pos.CENTER_LEFT);
 
         VBox content = new VBox(10,
                 new Label("Filtrer et trier"),
@@ -1145,13 +1246,15 @@ public class MainView {
                 new Label("Album cible"),
                 new HBox(8, albumSelector, newAlbumField),
                 duplicateLabel,
+                pagination,
                 scrollPane);
         content.setPadding(new Insets(10));
         dialog.getDialogPane().setContent(content);
 
         dialog.setResultConverter(button -> {
             if (button == validate) {
-                List<PhotoItem> selection = checkBoxes.values().stream()
+                List<PhotoItem> selection = selectionTiles.values().stream()
+                        .map(SelectionTile::getCheckBox)
                         .filter(cb -> cb.isSelected() && cb.getUserData() instanceof PhotoItem)
                         .map(cb -> (PhotoItem) cb.getUserData())
                         .toList();
