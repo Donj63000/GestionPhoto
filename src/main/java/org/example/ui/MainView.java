@@ -293,6 +293,7 @@ public class MainView {
         private final Label infoLabel;
         private final Button favoriteButton;
         private PhotoItem currentItem;
+        private boolean mountedOnPage;
 
         PhotoCard(PhotoItem item) {
             super(8);
@@ -341,24 +342,43 @@ public class MainView {
             header.setAlignment(Pos.CENTER_LEFT);
 
             getChildren().addAll(thumbWrapper, header, infoLabel);
-            updateContent(item);
+            updateContent(item, true);
         }
 
-        void updateContent(PhotoItem item) {
+        void updateContent(PhotoItem item, boolean onPage) {
             this.currentItem = item;
+            this.mountedOnPage = onPage;
             setUserData(item.path());
             nameLabel.setText(item.title());
             String meta = item.date().toString() + " | " + item.sizeLabel() + (item.favorite() ? " | *" : "");
             infoLabel.setText(meta);
             updateFavorite(item.favorite());
-            if (imageView.getImage() == null && Files.exists(item.path())) {
-                thumbnailService.load(item.path(), 320, imageView::setImage,
-                        ex -> log.warn("Miniature indisponible pour {}", item.path().getFileName()));
+            if (onPage) {
+                ensureThumbnailLoaded(item);
+            } else {
+                imageView.setImage(null);
             }
         }
 
         private void updateFavorite(boolean favorite) {
             favoriteButton.setText(favorite ? "★" : "☆");
+        }
+
+        private void ensureThumbnailLoaded(PhotoItem item) {
+            if (imageView.getImage() != null || !Files.exists(item.path())) {
+                return;
+            }
+            thumbnailService.load(item.path(), 320, image -> {
+                if (mountedOnPage && currentItem.path().equals(item.path())) {
+                    imageView.setImage(image);
+                }
+            },
+                    ex -> log.warn("Miniature indisponible pour {}", item.path().getFileName()));
+        }
+
+        void markOffPage() {
+            mountedOnPage = false;
+            imageView.setImage(null);
         }
     }
 
@@ -552,6 +572,11 @@ public class MainView {
         int fromIndex = Math.min((currentPage - 1) * PAGE_SIZE, totalCount);
         int toIndex = Math.min(fromIndex + PAGE_SIZE, totalCount);
         List<PhotoItem> pageItems = filtered.subList(fromIndex, toIndex);
+        List<Path> prefetchPaths = filtered.stream()
+                .skip(toIndex)
+                .limit(4)
+                .map(PhotoItem::path)
+                .toList();
 
         Set<Path> filteredPaths = pageItems.stream()
                 .map(PhotoItem::path)
@@ -565,7 +590,7 @@ public class MainView {
         int index = 0;
         for (PhotoItem item : pageItems) {
             PhotoCard card = cardCache.computeIfAbsent(item.path(), path -> createPhotoCard(item));
-            card.updateContent(item);
+            card.updateContent(item, true);
             int currentIndex = grid.getChildren().indexOf(card);
             if (currentIndex == -1) {
                 grid.getChildren().add(index, card);
@@ -575,6 +600,8 @@ public class MainView {
             }
             index++;
         }
+        cleanupCaches(filteredPaths, prefetchPaths);
+        prefetchNext(prefetchPaths);
         updateGridHeader(pageItems.size(), totalCount, currentPage, totalPages);
         updatePaginationControls();
         log.info("Grid rafraichie: {} elements (filtre={}, recherche='{}', page {}/{})",
@@ -594,6 +621,34 @@ public class MainView {
         pageIndicator.setText("Page " + currentPage + " / " + totalPages);
         previousPageButton.setDisable(currentPage <= 1 || photoService.all().isEmpty());
         nextPageButton.setDisable(currentPage >= totalPages || photoService.all().isEmpty());
+    }
+
+    private void prefetchNext(List<Path> prefetchPaths) {
+        for (Path path : prefetchPaths) {
+            thumbnailService.preload(path, 320);
+        }
+    }
+
+    private void cleanupCaches(Set<Path> visiblePaths, List<Path> prefetchPaths) {
+        Set<Path> keepPaths = new LinkedHashSet<>(visiblePaths);
+        keepPaths.addAll(prefetchPaths);
+
+        cardCache.entrySet().removeIf(entry -> {
+            Path path = entry.getKey();
+            if (!keepPaths.contains(path)) {
+                entry.getValue().markOffPage();
+                return true;
+            }
+            return false;
+        });
+
+        for (Map.Entry<Path, PhotoCard> entry : cardCache.entrySet()) {
+            if (!visiblePaths.contains(entry.getKey())) {
+                entry.getValue().markOffPage();
+            }
+        }
+
+        thumbnailService.evictExcept(keepPaths);
     }
 
     private Node buildEmptyState(boolean emptyLibrary) {
