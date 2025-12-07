@@ -17,6 +17,7 @@ import javafx.scene.control.ComboBox;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Hyperlink;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
@@ -44,12 +45,14 @@ import org.example.ui.service.PhotoLibraryService.Filter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.URL;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -58,6 +61,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.IntConsumer;
 import java.util.stream.Collectors;
 
 public class MainView {
@@ -81,6 +85,14 @@ public class MainView {
     private int currentPage = 1;
     private int totalPages = 1;
     private static final int PAGE_SIZE = 20;
+    private static final int DEFAULT_SCAN_DEPTH = Integer.MAX_VALUE;
+    private enum SelectionFilterMode { NAME, DATE, PATH }
+    private record SelectionPreset(String label, SelectionFilterMode mode, Comparator<PhotoItem> comparator) {
+        @Override
+        public String toString() {
+            return label;
+        }
+    }
 
     public MainView() {
         this(new PhotoLibraryService(), new PhotoFileScanner(), new ThumbnailService(), new ExportService());
@@ -404,7 +416,7 @@ public class MainView {
             preview.setMaxHeight(120);
 
             checkBox = new CheckBox();
-            checkBox.setSelected(!duplicate);
+            checkBox.setSelected(false);
             checkBox.setDisable(duplicate);
             checkBox.setUserData(item);
             StackPane.setAlignment(checkBox, Pos.TOP_LEFT);
@@ -1044,6 +1056,88 @@ public class MainView {
         }
     }
 
+    private PhotoFileScanner.ScanOptions promptScanFilters(Window owner) {
+        Dialog<PhotoFileScanner.ScanOptions> dialog = new Dialog<>();
+        dialog.setTitle("Options de scan");
+        dialog.setHeaderText("Affinez la recherche avant de commencer");
+        if (owner != null) {
+            dialog.initOwner(owner);
+        }
+        applyDialogTheme(dialog);
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        CheckBox skipHidden = new CheckBox("Ignorer dossiers et fichiers caches");
+        skipHidden.setSelected(true);
+        skipHidden.getStyleClass().add("dialog-check");
+
+        CheckBox skipSystem = new CheckBox("Ignorer dossiers systeme (Windows, Program Files, AppData...)");
+        skipSystem.setSelected(true);
+        skipSystem.getStyleClass().add("dialog-check");
+
+        TextField depthField = new TextField();
+        depthField.setPromptText("Profondeur max (vide = illimite)");
+        depthField.getStyleClass().add("dialog-field");
+
+        TextField sizeField = new TextField();
+        sizeField.setPromptText("Taille max (MB, vide = illimite)");
+        sizeField.getStyleClass().add("dialog-field");
+
+        TextField dateField = new TextField();
+        dateField.setPromptText("Date min (AAAA-MM-JJ, optionnel)");
+        dateField.getStyleClass().add("dialog-field");
+
+        Label hint = new Label("Choisissez jusqu'a 5 filtres pour accelerer la recherche");
+        hint.getStyleClass().add("dialog-muted");
+
+        VBox content = new VBox(10,
+                hint,
+                skipHidden,
+                skipSystem,
+                depthField,
+                sizeField,
+                dateField);
+        content.setPadding(new Insets(10));
+        dialog.getDialogPane().setContent(content);
+
+        dialog.setResultConverter(button -> {
+            if (button != ButtonType.OK) {
+                return null;
+            }
+            int depth = DEFAULT_SCAN_DEPTH;
+            try {
+                String text = depthField.getText();
+                if (text != null && !text.isBlank()) {
+                    depth = Math.max(1, Integer.parseInt(text.trim()));
+                }
+            } catch (NumberFormatException ignored) { }
+
+            long maxSize = 0;
+            try {
+                String text = sizeField.getText();
+                if (text != null && !text.isBlank()) {
+                    double mb = Double.parseDouble(text.trim());
+                    maxSize = mb > 0 ? (long) (mb * 1024 * 1024) : 0;
+                }
+            } catch (NumberFormatException ignored) { }
+
+            LocalDate minDate = null;
+            String dateText = dateField.getText();
+            if (dateText != null && !dateText.isBlank()) {
+                try {
+                    minDate = LocalDate.parse(dateText.trim());
+                } catch (Exception ignored) { }
+            }
+
+            return new PhotoFileScanner.ScanOptions(
+                    skipHidden.isSelected(),
+                    skipSystem.isSelected(),
+                    depth,
+                    maxSize,
+                    minDate);
+        });
+        return dialog.showAndWait().orElse(null);
+    }
+
     private void runGlobalScan(Window owner) {
         List<Path> roots = detectScanRoots();
         if (roots.isEmpty()) {
@@ -1059,7 +1153,13 @@ public class MainView {
             return;
         }
 
-        Task<PhotoFileScanner.ScanResult> task = createGlobalScanTask(roots);
+        PhotoFileScanner.ScanOptions scanOptions = promptScanFilters(owner);
+        if (scanOptions == null) {
+            statusLabel.setText("Scan annule");
+            return;
+        }
+
+        Task<PhotoFileScanner.ScanResult> task = createGlobalScanTask(roots, scanOptions);
         Dialog<Void> progressDialog = buildScanProgressDialog(owner, task);
 
         task.setOnSucceeded(event -> {
@@ -1091,7 +1191,7 @@ public class MainView {
         thread.start();
     }
 
-    private Task<PhotoFileScanner.ScanResult> createGlobalScanTask(List<Path> candidateRoots) {
+    private Task<PhotoFileScanner.ScanResult> createGlobalScanTask(List<Path> candidateRoots, PhotoFileScanner.ScanOptions options) {
         List<Path> roots = candidateRoots.stream()
                 .filter(this::isUsableDirectory)
                 .distinct()
@@ -1122,7 +1222,7 @@ public class MainView {
                         rootVisited.set(count);
                         updateMessage(String.format(Locale.ROOT, "Scan de %s - fichiers parcourus: %d",
                                 root.getFileName(), totalVisited));
-                    });
+                    }, options);
                     List<PhotoItem> rootItems = rootResult.photos();
                     skippedDirectories.addAll(rootResult.skippedDirectories());
                     photosCount += rootItems.size();
@@ -1171,6 +1271,21 @@ public class MainView {
         });
     }
 
+    private void applyDialogTheme(Dialog<?> dialog) {
+        try {
+            URL themeUrl = getClass().getResource("/ui/theme.css");
+            if (themeUrl != null) {
+                String stylesheet = themeUrl.toExternalForm();
+                if (!dialog.getDialogPane().getStylesheets().contains(stylesheet)) {
+                    dialog.getDialogPane().getStylesheets().add(stylesheet);
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Impossible de charger le theme pour le dialogue: {}", e.getMessage());
+        }
+        dialog.getDialogPane().getStyleClass().add("selection-dialog");
+    }
+
     protected Dialog<ScanSelection> buildScanSelectionDialog(Window owner, List<PhotoItem> items) {
         Dialog<ScanSelection> dialog = new Dialog<>();
         dialog.setTitle("Selection des photos");
@@ -1178,19 +1293,47 @@ public class MainView {
         if (owner != null) {
             dialog.initOwner(owner);
         }
+        applyDialogTheme(dialog);
 
         ButtonType validate = new ButtonType("Ajouter", ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(validate, ButtonType.CANCEL);
 
         TextField filterField = new TextField();
         filterField.setPromptText("Filtrer par nom ou album");
-        ChoiceBox<String> sortChoice = new ChoiceBox<>(FXCollections.observableArrayList("Plus recent", "Nom A-Z"));
-        sortChoice.getSelectionModel().selectFirst();
+        filterField.getStyleClass().add("dialog-field");
+        ComboBox<SelectionPreset> filterPreset = new ComboBox<>(FXCollections.observableArrayList(
+                new SelectionPreset("Nom", SelectionFilterMode.NAME, null),
+                new SelectionPreset("Date (plus recent)", SelectionFilterMode.DATE, byMostRecent()),
+                new SelectionPreset("Chemin commun", SelectionFilterMode.PATH, null),
+                new SelectionPreset("Nom A-Z (tri)", SelectionFilterMode.NAME,
+                        Comparator.comparing(PhotoItem::title, String.CASE_INSENSITIVE_ORDER))
+        ));
+        filterPreset.getSelectionModel().selectFirst();
+        filterPreset.getStyleClass().add("dialog-choice");
+        filterPreset.setPrefWidth(170);
+        filterPreset.setButtonCell(new ListCell<>() {
+            @Override
+            protected void updateItem(SelectionPreset item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : item.label());
+                getStyleClass().add("dialog-choice-cell");
+            }
+        });
+        filterPreset.setCellFactory(cb -> new ListCell<>() {
+            @Override
+            protected void updateItem(SelectionPreset item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : item.label());
+                getStyleClass().add("dialog-choice-cell");
+            }
+        });
 
         ComboBox<String> albumSelector = new ComboBox<>(FXCollections.observableArrayList(photoService.albumNames()));
         albumSelector.setPromptText("Album existant");
+        albumSelector.getStyleClass().add("dialog-choice");
         TextField newAlbumField = new TextField();
         newAlbumField.setPromptText("Ou nommez un nouvel album");
+        newAlbumField.getStyleClass().add("dialog-field");
 
         List<PhotoItem> sorted = new ArrayList<>(items);
         sorted.sort(byMostRecent());
@@ -1199,17 +1342,28 @@ public class MainView {
         tilePane.setPrefColumns(4);
         tilePane.setPrefTileWidth(180);
         tilePane.setPrefTileHeight(180);
+        tilePane.getStyleClass().add("selection-grid");
         ScrollPane scrollPane = new ScrollPane(tilePane);
         scrollPane.setFitToWidth(true);
         scrollPane.setPrefViewportHeight(420);
+        scrollPane.getStyleClass().add("selection-scroll");
 
         Label duplicateLabel = new Label();
+        duplicateLabel.getStyleClass().add("dialog-muted");
         Label resultsLabel = new Label();
+        resultsLabel.getStyleClass().add("dialog-muted");
         Label pageLabel = new Label();
-        Button previousPage = new Button("◀");
-        Button nextPage = new Button("▶");
-        previousPage.getStyleClass().add("ghost-button");
-        nextPage.getStyleClass().add("ghost-button");
+        pageLabel.getStyleClass().add("pagination-indicator");
+        Button previousPage = new Button("<");
+        Button nextPage = new Button(">");
+        previousPage.getStyleClass().addAll("ghost-button", "page-button");
+        nextPage.getStyleClass().addAll("ghost-button", "page-button");
+        Label jumpLabel = new Label("Aller a");
+        jumpLabel.getStyleClass().add("dialog-muted");
+        TextField pageInput = new TextField();
+        pageInput.setPromptText("Page");
+        pageInput.setPrefWidth(70);
+        pageInput.getStyleClass().add("dialog-field");
 
         Map<PhotoItem, SelectionTile> selectionTiles = new LinkedHashMap<>();
         for (PhotoItem item : sorted) {
@@ -1219,6 +1373,7 @@ public class MainView {
         }
 
         int[] currentPage = new int[]{1};
+        int[] totalPages = new int[]{1};
 
         Comparator<PhotoItem> defaultComparator = byMostRecent();
 
@@ -1236,20 +1391,38 @@ public class MainView {
                 .addListener((obs, oldVal, newVal) -> updateValidateState.run()));
 
         Runnable refreshGrid = () -> {
-            Comparator<PhotoItem> comparator = sortChoice.getSelectionModel().getSelectedIndex() == 1
-                    ? Comparator.comparing(PhotoItem::title, String.CASE_INSENSITIVE_ORDER)
+            SelectionPreset preset = filterPreset.getSelectionModel().getSelectedItem();
+            SelectionFilterMode mode = preset == null ? SelectionFilterMode.NAME : preset.mode();
+            Comparator<PhotoItem> comparator = preset != null && preset.comparator() != null
+                    ? preset.comparator()
                     : defaultComparator;
             String filter = filterField.getText() == null ? "" : filterField.getText().trim().toLowerCase(Locale.ROOT);
             List<PhotoItem> filtered = sorted.stream()
-                    .filter(item -> filter.isEmpty()
-                            || item.title().toLowerCase(Locale.ROOT).contains(filter)
-                            || item.albums().stream().anyMatch(alb -> alb.toLowerCase(Locale.ROOT).contains(filter)))
+                    .filter(item -> {
+                        if (filter.isEmpty()) {
+                            return true;
+                        }
+                        switch (mode) {
+                            case DATE:
+                                return item.date() != null
+                                        && item.date().toString().toLowerCase(Locale.ROOT).contains(filter);
+                            case PATH:
+                                Path parent = item.path() == null ? null : item.path().getParent();
+                                String parentPath = parent == null ? "" : parent.toString().toLowerCase(Locale.ROOT);
+                                return parentPath.contains(filter);
+                            case NAME:
+                            default:
+                                return item.title().toLowerCase(Locale.ROOT).contains(filter)
+                                        || item.albums().stream()
+                                        .anyMatch(alb -> alb.toLowerCase(Locale.ROOT).contains(filter));
+                        }
+                    })
                     .sorted(comparator)
                     .toList();
             int total = filtered.size();
-            int totalPages = Math.max(1, (int) Math.ceil((double) total / PAGE_SIZE));
-            if (currentPage[0] > totalPages) {
-                currentPage[0] = totalPages;
+            totalPages[0] = Math.max(1, (int) Math.ceil((double) total / PAGE_SIZE));
+            if (currentPage[0] > totalPages[0]) {
+                currentPage[0] = totalPages[0];
             }
             int from = Math.min((currentPage[0] - 1) * PAGE_SIZE, total);
             int to = Math.min(from + PAGE_SIZE, total);
@@ -1257,27 +1430,42 @@ public class MainView {
                     .map(selectionTiles::get)
                     .toList());
             resultsLabel.setText(String.format(Locale.ROOT, "%d resultat(s)", total));
-            pageLabel.setText(String.format(Locale.ROOT, "Page %d/%d", currentPage[0], totalPages));
+            pageLabel.setText(String.format(Locale.ROOT, "Page %d/%d", currentPage[0], totalPages[0]));
+            pageInput.setText(String.valueOf(currentPage[0]));
             previousPage.setDisable(currentPage[0] <= 1);
-            nextPage.setDisable(currentPage[0] >= totalPages);
+            nextPage.setDisable(currentPage[0] >= totalPages[0]);
+        };
+
+        IntConsumer goToPage = target -> {
+            int clamped = Math.max(1, Math.min(target, totalPages[0]));
+            if (currentPage[0] != clamped) {
+                currentPage[0] = clamped;
+                refreshGrid.run();
+            }
         };
 
         previousPage.setOnAction(event -> {
             if (currentPage[0] > 1) {
-                currentPage[0]--;
-                refreshGrid.run();
+                goToPage.accept(currentPage[0] - 1);
             }
         });
         nextPage.setOnAction(event -> {
-            currentPage[0]++;
-            refreshGrid.run();
+            goToPage.accept(currentPage[0] + 1);
+        });
+        pageInput.setOnAction(event -> {
+            try {
+                int requested = Integer.parseInt(pageInput.getText().trim());
+                goToPage.accept(requested);
+            } catch (NumberFormatException ex) {
+                pageInput.setText(String.valueOf(currentPage[0]));
+            }
         });
 
         filterField.textProperty().addListener((obs, oldVal, newVal) -> {
             currentPage[0] = 1;
             refreshGrid.run();
         });
-        sortChoice.getSelectionModel().selectedIndexProperty().addListener((obs, oldVal, newVal) -> {
+        filterPreset.getSelectionModel().selectedIndexProperty().addListener((obs, oldVal, newVal) -> {
             currentPage[0] = 1;
             refreshGrid.run();
         });
@@ -1292,14 +1480,33 @@ public class MainView {
                 ? "Aucun doublon detecte"
                 : duplicates + " doublon(s) detecte(s) : ils seront ignores");
 
-        HBox pagination = new HBox(8, previousPage, pageLabel, nextPage, resultsLabel);
+        Region paginationSpacer = new Region();
+        HBox.setHgrow(paginationSpacer, Priority.ALWAYS);
+        HBox pagination = new HBox(10, previousPage, pageLabel, nextPage, jumpLabel, pageInput, paginationSpacer, resultsLabel);
+        pagination.getStyleClass().add("selection-pagination");
         pagination.setAlignment(Pos.CENTER_LEFT);
 
+        Label filterTitle = new Label("Filtrer et trier");
+        filterTitle.getStyleClass().add("dialog-section");
+        Label albumTitle = new Label("Album cible");
+        albumTitle.getStyleClass().add("dialog-section");
+
+        HBox filterRow = new HBox(8, filterField, filterPreset);
+        filterRow.getStyleClass().add("selection-toolbar");
+        HBox.setHgrow(filterField, Priority.ALWAYS);
+        HBox.setHgrow(filterPreset, Priority.NEVER);
+        filterRow.setAlignment(Pos.CENTER_LEFT);
+        HBox albumRow = new HBox(8, albumSelector, newAlbumField);
+        albumRow.getStyleClass().add("selection-toolbar");
+        HBox.setHgrow(albumSelector, Priority.ALWAYS);
+        HBox.setHgrow(newAlbumField, Priority.ALWAYS);
+        albumRow.setAlignment(Pos.CENTER_LEFT);
+
         VBox content = new VBox(10,
-                new Label("Filtrer et trier"),
-                new HBox(8, filterField, sortChoice),
-                new Label("Album cible"),
-                new HBox(8, albumSelector, newAlbumField),
+                filterTitle,
+                filterRow,
+                albumTitle,
+                albumRow,
                 duplicateLabel,
                 pagination,
                 scrollPane);
@@ -1397,6 +1604,11 @@ public class MainView {
     }
 
     private void runScan(Window owner, Path root) {
+        PhotoFileScanner.ScanOptions options = promptScanFilters(owner);
+        if (options == null) {
+            statusLabel.setText("Scan annule");
+            return;
+        }
         statusLabel.setText("Scan en cours...");
         Task<PhotoFileScanner.ScanResult> task = new Task<>() {
             @Override
@@ -1405,7 +1617,7 @@ public class MainView {
                 return scanner.scan(root, this::isCancelled, count -> {
                     visited.set(count);
                     updateMessage(String.format(Locale.ROOT, "Fichiers parcourus: %d", count));
-                });
+                }, options);
             }
         };
         task.setOnSucceeded(event -> {

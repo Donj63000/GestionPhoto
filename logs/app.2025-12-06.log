@@ -1,0 +1,6 @@
+2025-12-06 00:22:58.925 INFO  [JavaFX Application Thread] o.e.ui.service.PhotoLibraryService - PhotoLibraryService initialise avec 8 photos de demo
+2025-12-06 00:22:59.292 INFO  [JavaFX Application Thread] org.example.ui.MainView - Grid rafraichie: 8 elements (filtre=ALL, recherche='')
+2025-12-06 00:23:00.196 INFO  [JavaFX Application Thread] org.example.app.PhotoGestionApp - UI principale initialisee
+2025-12-06 00:23:01.162 INFO  [JavaFX Application Thread] o.e.ui.service.PhotoLibraryService - PhotoLibraryService initialise avec 8 photos de demo
+2025-12-06 00:23:01.443 INFO  [JavaFX Application Thread] org.example.ui.MainView - Grid rafraichie: 8 elements (filtre=ALL, recherche='')
+2025-12-06 00:23:02.251 INFO  [JavaFX Application Thread] org.example.app.PhotoGestionApp - UI principale initialisee

@@ -217,3 +217,153 @@
     -fx-text-fill: #e8eefc;
     -fx-font-size: 13px;
 }
+
+.selection-dialog {
+    -fx-background-color: linear-gradient(to bottom right, rgba(19, 34, 73, 0.96), rgba(12, 25, 47, 0.96));
+    -fx-background-radius: 14;
+    -fx-border-radius: 14;
+    -fx-border-color: rgba(255, 255, 255, 0.06);
+}
+
+.selection-dialog > *.header-panel {
+    -fx-background-color: transparent;
+    -fx-padding: 4 0 6 0;
+}
+
+.selection-dialog > *.content {
+    -fx-background-color: transparent;
+}
+
+.selection-dialog .label {
+    -fx-text-fill: #e8eefc;
+}
+
+.selection-dialog .button-bar .button {
+    -fx-background-color: rgba(255, 255, 255, 0.08);
+    -fx-text-fill: #e8eefc;
+    -fx-border-color: rgba(255, 255, 255, 0.15);
+    -fx-border-radius: 10;
+    -fx-background-radius: 10;
+    -fx-padding: 8 12 8 12;
+}
+
+.selection-dialog .button-bar .button:default {
+    -fx-background-color: linear-gradient(to right, #2d6cdf, #4ce0b3);
+    -fx-text-fill: #0f172a;
+    -fx-font-weight: 700;
+    -fx-effect: dropshadow(gaussian, rgba(45, 108, 223, 0.35), 10, 0.35, 0, 2);
+    -fx-border-color: transparent;
+}
+
+.selection-dialog .button-bar .button:default:hover {
+    -fx-background-color: linear-gradient(to right, #3a7af0, #63e6c4);
+}
+
+.dialog-field, .dialog-choice {
+    -fx-background-color: rgba(255, 255, 255, 0.06);
+    -fx-text-fill: #f1f4fd;
+    -fx-border-color: rgba(255, 255, 255, 0.12);
+    -fx-border-radius: 10;
+    -fx-background-radius: 10;
+    -fx-padding: 8 10 8 10;
+    -fx-prompt-text-fill: #9fb2d0;
+}
+
+.dialog-choice {
+    -fx-padding: 6 10 6 10;
+}
+
+.dialog-choice .list-cell, .dialog-choice-cell {
+    -fx-background-color: #0f172a;
+    -fx-text-fill: #f1f4fd;
+}
+
+.dialog-choice .list-view, .dialog-choice .list-cell:hover {
+    -fx-background-color: #0f172a;
+}
+
+.combo-box-popup .list-view {
+    -fx-background-color: #0f172a;
+    -fx-border-color: rgba(255, 255, 255, 0.12);
+}
+
+.dialog-section {
+    -fx-text-fill: #f1f4fd;
+    -fx-font-size: 12px;
+    -fx-font-weight: 700;
+    -fx-opacity: 0.9;
+    -fx-padding: 6 0 2 0;
+    -fx-letter-spacing: 0.3px;
+}
+
+.dialog-muted {
+    -fx-text-fill: #a6b3cc;
+    -fx-font-size: 12px;
+}
+
+.dialog-check {
+    -fx-text-fill: #e8eefc;
+}
+
+.dialog-check .text {
+    -fx-fill: #e8eefc;
+}
+
+.selection-toolbar {
+    -fx-alignment: center-left;
+}
+
+.selection-scroll {
+    -fx-background-color: transparent;
+    -fx-border-color: rgba(255, 255, 255, 0.08);
+    -fx-border-radius: 12;
+    -fx-background-radius: 12;
+}
+
+.selection-scroll > .viewport {
+    -fx-background-color: transparent;
+}
+
+.selection-scroll .scroll-bar:vertical {
+    -fx-background-color: rgba(255, 255, 255, 0.06);
+    -fx-background-radius: 10;
+}
+
+.selection-grid {
+    -fx-padding: 4;
+}
+
+.selection-tile {
+    -fx-background-color: rgba(255, 255, 255, 0.04);
+    -fx-background-radius: 12;
+    -fx-border-color: rgba(255, 255, 255, 0.1);
+    -fx-border-radius: 12;
+}
+
+.selection-tile:hover {
+    -fx-border-color: rgba(76, 224, 179, 0.6);
+    -fx-background-color: rgba(255, 255, 255, 0.07);
+}
+
+.selection-thumb {
+    -fx-background-color: rgba(255, 255, 255, 0.04);
+    -fx-border-color: rgba(255, 255, 255, 0.14);
+    -fx-border-radius: 10;
+    -fx-background-radius: 10;
+}
+
+.selection-pagination {
+    -fx-padding: 6 0 6 0;
+}
+
+.page-button {
+    -fx-min-width: 36;
+    -fx-min-height: 32;
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+}
+
+.pagination-indicator {
+    -fx-text-fill: #e8eefc;
+    -fx-font-weight: 700;
+}

@@ -32,26 +32,43 @@ import java.util.concurrent.atomic.AtomicLong;
 public class PhotoFileScanner {
     private static final Logger log = LoggerFactory.getLogger(PhotoFileScanner.class);
     private static final Set<String> IMAGE_EXT = new HashSet<>(List.of("jpg", "jpeg", "png", "gif", "bmp", "webp", "heic"));
+    private static final Set<String> SYSTEM_DIR_NAMES = Set.of(
+            "windows", "program files", "program files (x86)", "appdata", "$recycle.bin", "system volume information");
+
+    public record ScanOptions(boolean skipHidden, boolean skipSystem, int maxDepth, long maxSizeBytes, LocalDate minDate) {
+        public static ScanOptions defaults() {
+            return new ScanOptions(true, true, Integer.MAX_VALUE, 0, null);
+        }
+    }
 
     public ScanResult scan(Path root) {
         return scan(List.of(root));
     }
 
     public ScanResult scan(List<Path> roots) {
-        return scan(roots, () -> false, null);
+        return scan(roots, () -> false, null, ScanOptions.defaults());
     }
 
     public ScanResult scan(Path root, BooleanSupplier cancelSignal, LongConsumer progressCallback) {
-        return scan(List.of(root), cancelSignal, progressCallback);
+        return scan(List.of(root), cancelSignal, progressCallback, ScanOptions.defaults());
+    }
+
+    public ScanResult scan(Path root, BooleanSupplier cancelSignal, LongConsumer progressCallback, ScanOptions options) {
+        return scan(List.of(root), cancelSignal, progressCallback, options);
     }
 
     public ScanResult scan(List<Path> roots, BooleanSupplier cancelSignal, LongConsumer progressCallback) {
+        return scan(roots, cancelSignal, progressCallback, ScanOptions.defaults());
+    }
+
+    public ScanResult scan(List<Path> roots, BooleanSupplier cancelSignal, LongConsumer progressCallback, ScanOptions options) {
         if (roots == null || roots.isEmpty()) {
             log.warn("Scan ignore: aucune racine fournie");
             return ScanResult.empty();
         }
         BooleanSupplier shouldCancel = cancelSignal != null ? cancelSignal : () -> false;
         LongConsumer progress = progressCallback != null ? progressCallback : count -> { };
+        ScanOptions effectiveOptions = options == null ? ScanOptions.defaults() : options;
         List<PhotoItem> aggregated = new ArrayList<>();
         List<Path> skippedDirectories = new ArrayList<>();
         AtomicLong visited = new AtomicLong(0);
@@ -66,7 +83,7 @@ public class PhotoFileScanner {
             int itemsBefore = aggregated.size();
             try {
                 Files.walkFileTree(root, EnumSet.noneOf(FileVisitOption.class), Integer.MAX_VALUE, new ControlledVisitor(
-                        root, shouldCancel, progress, visited, aggregated, skippedDirectories));
+                        root, shouldCancel, progress, visited, aggregated, skippedDirectories, effectiveOptions));
                 if (shouldCancel.getAsBoolean()) {
                     log.info("Scan interrompu a la demande apres {} fichiers parcourus", visited);
                     break;
@@ -81,20 +98,14 @@ public class PhotoFileScanner {
         return new ScanResult(aggregated, List.copyOf(skippedDirectories));
     }
 
-    private Optional<PhotoItem> toPhotoSafe(Path root, Path file) {
-        try {
-            BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
-            long size = attrs.size();
-            LocalDate date = Instant.ofEpochMilli(attrs.lastModifiedTime().toMillis())
-                    .atZone(ZoneId.systemDefault()).toLocalDate();
-            String title = file.getFileName().toString();
-            String sizeLabel = humanSize(size);
-            List<String> albums = extractAlbums(root, file);
-            return Optional.of(new PhotoItem(file, title, date, sizeLabel, List.of(), albums, false));
-        } catch (IOException e) {
-            log.warn("Lecture ignoree pour {}: {}", file, e.getMessage());
-            return Optional.empty();
-        }
+    private Optional<PhotoItem> toPhotoSafe(Path root, Path file, BasicFileAttributes attrs) {
+        long size = attrs.size();
+        LocalDate date = Instant.ofEpochMilli(attrs.lastModifiedTime().toMillis())
+                .atZone(ZoneId.systemDefault()).toLocalDate();
+        String title = file.getFileName().toString();
+        String sizeLabel = humanSize(size);
+        List<String> albums = extractAlbums(root, file);
+        return Optional.of(new PhotoItem(file, title, date, sizeLabel, List.of(), albums, false));
     }
 
     private List<String> extractAlbums(Path root, Path file) {
@@ -171,21 +182,42 @@ public class PhotoFileScanner {
         private final AtomicLong visited;
         private final List<PhotoItem> aggregated;
         private final List<Path> skipped;
+        private final ScanOptions options;
 
         ControlledVisitor(Path root, BooleanSupplier shouldCancel, LongConsumer progress,
-                AtomicLong visited, List<PhotoItem> aggregated, List<Path> skipped) {
+                AtomicLong visited, List<PhotoItem> aggregated, List<Path> skipped, ScanOptions options) {
             this.root = root;
             this.shouldCancel = shouldCancel;
             this.progress = progress;
             this.visited = visited;
             this.aggregated = aggregated;
             this.skipped = skipped;
+            this.options = options == null ? ScanOptions.defaults() : options;
         }
 
         @Override
         public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
             if (shouldCancel.getAsBoolean()) {
                 return FileVisitResult.TERMINATE;
+            }
+            if (options.skipHidden()) {
+                if (isHidden(dir) || dir.getFileName().toString().startsWith(".")) {
+                    skipped.add(dir);
+                    return FileVisitResult.SKIP_SUBTREE;
+                }
+            }
+            if (options.skipSystem()) {
+                String name = dir.getFileName().toString().toLowerCase(Locale.ROOT);
+                if (SYSTEM_DIR_NAMES.contains(name)) {
+                    skipped.add(dir);
+                    return FileVisitResult.SKIP_SUBTREE;
+                }
+            }
+            if (options.maxDepth() > 0) {
+                int depth = root.relativize(dir).getNameCount();
+                if (depth >= options.maxDepth()) {
+                    return FileVisitResult.SKIP_SUBTREE;
+                }
             }
             if (!isReadableDirectory(dir)) {
                 skipped.add(dir);
@@ -203,12 +235,28 @@ public class PhotoFileScanner {
             if (!attrs.isRegularFile()) {
                 return FileVisitResult.CONTINUE;
             }
+            if (options.maxDepth() > 0) {
+                int depth = root.relativize(file).getNameCount();
+                if (depth > options.maxDepth()) {
+                    return FileVisitResult.CONTINUE;
+                }
+            }
             long count = visited.incrementAndGet();
             progress.accept(count);
             if (!isImage(file)) {
                 return FileVisitResult.CONTINUE;
             }
-            toPhotoSafe(root, file).ifPresent(aggregated::add);
+            if (options.maxSizeBytes() > 0 && attrs.size() > options.maxSizeBytes()) {
+                return FileVisitResult.CONTINUE;
+            }
+            if (options.minDate() != null) {
+                LocalDate fileDate = Instant.ofEpochMilli(attrs.lastModifiedTime().toMillis())
+                        .atZone(ZoneId.systemDefault()).toLocalDate();
+                if (fileDate.isBefore(options.minDate())) {
+                    return FileVisitResult.CONTINUE;
+                }
+            }
+            toPhotoSafe(root, file, attrs).ifPresent(aggregated::add);
             return FileVisitResult.CONTINUE;
         }
 
@@ -217,6 +265,14 @@ public class PhotoFileScanner {
             skipped.add(file);
             log.warn("Lecture ignoree pour {}: {}", file, exc.getMessage());
             return FileVisitResult.SKIP_SUBTREE;
+        }
+    }
+
+    private boolean isHidden(Path dir) {
+        try {
+            return Files.isHidden(dir);
+        } catch (IOException e) {
+            return false;
         }
     }
 }
