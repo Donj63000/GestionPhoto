@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -25,23 +26,35 @@ public class PhotoFileScanner {
     private static final Set<String> IMAGE_EXT = new HashSet<>(List.of("jpg", "jpeg", "png", "gif", "bmp", "webp", "heic"));
 
     public List<PhotoItem> scan(Path root) {
-        if (root == null || !Files.isDirectory(root)) {
-            log.warn("Scan ignore: chemin invalide {}", root);
+        return scan(List.of(root));
+    }
+
+    public List<PhotoItem> scan(List<Path> roots) {
+        if (roots == null || roots.isEmpty()) {
+            log.warn("Scan ignore: aucune racine fournie");
             return List.of();
         }
-        try (Stream<Path> walk = Files.walk(root)) {
-            List<PhotoItem> items = walk
-                    .filter(Files::isRegularFile)
-                    .filter(this::isImage)
-                    .map(path -> toPhotoSafe(root, path))
-                    .flatMap(Optional::stream)
-                    .collect(Collectors.toList());
-            log.info("Scan termine: {} fichiers images dans {}", items.size(), root);
-            return items;
-        } catch (IOException e) {
-            log.error("Echec du scan du dossier {}", root, e);
-            return List.of();
+        List<PhotoItem> aggregated = new ArrayList<>();
+        for (Path root : roots) {
+            if (root == null || !Files.isDirectory(root)) {
+                log.warn("Racine ignoree car invalide: {}", root);
+                continue;
+            }
+            try (Stream<Path> walk = Files.walk(root)) {
+                List<PhotoItem> items = walk
+                        .filter(Files::isRegularFile)
+                        .filter(this::isImage)
+                        .map(path -> toPhotoSafe(root, path))
+                        .flatMap(Optional::stream)
+                        .collect(Collectors.toList());
+                log.info("Scan termine: {} fichiers images dans {}", items.size(), root);
+                aggregated.addAll(items);
+            } catch (IOException e) {
+                log.error("Echec du scan du dossier {}", root, e);
+            }
         }
+        aggregated.sort(Comparator.comparing(PhotoItem::date).reversed());
+        return aggregated;
     }
 
     private Optional<PhotoItem> toPhotoSafe(Path root, Path file) {

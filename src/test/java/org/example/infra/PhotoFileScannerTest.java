@@ -7,6 +7,8 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Instant;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -40,5 +42,23 @@ class PhotoFileScannerTest {
         assertTrue(items.stream().anyMatch(item -> item.path().equals(photo2)
                         && item.albums().isEmpty()),
                 "Image at root should not be assigned to an album");
+    }
+
+    @Test
+    void shouldScanMultipleRootsAndSortByDate() throws IOException {
+        Path albumDir = Files.createDirectories(tempDir.resolve("AlbumOne"));
+        Path secondDir = Files.createDirectories(tempDir.resolve("AlbumTwo"));
+        Path newer = Files.createFile(albumDir.resolve("newer.jpg"));
+        Path older = Files.createFile(secondDir.resolve("older.png"));
+
+        Files.setLastModifiedTime(newer, FileTime.from(Instant.now()));
+        Files.setLastModifiedTime(older, FileTime.from(Instant.now().minusSeconds(3600)));
+
+        PhotoFileScanner scanner = new PhotoFileScanner();
+        List<PhotoItem> items = scanner.scan(List.of(albumDir, secondDir));
+
+        assertEquals(2, items.size(), "All images across roots should be returned");
+        assertEquals(newer, items.get(0).path(), "Most recent image should come first");
+        assertEquals(older, items.get(1).path(), "Older image should follow");
     }
 }
