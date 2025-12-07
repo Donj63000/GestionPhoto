@@ -2,6 +2,8 @@ package org.example.app;
 
 import javafx.application.Application;
 import javafx.scene.Scene;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.stage.Stage;
 import org.example.ui.MainView;
 import org.slf4j.Logger;
@@ -35,6 +37,14 @@ public class PhotoGestionApp extends Application {
         stage.setScene(scene);
         stage.setMinWidth(960);
         stage.setMinHeight(640);
+
+        scene.addEventHandler(KeyEvent.KEY_PRESSED, event -> {
+            if (event.getCode() == KeyCode.F1) {
+                log.info("Raccourci clavier Aide (F1) declenche");
+                mainView.showHelpDialog(stage);
+                event.consume();
+            }
+        });
         stage.show();
 
         log.info("UI principale initialisee");
