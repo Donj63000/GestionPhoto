@@ -12,11 +12,15 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 
 public class ThumbnailService {
     private static final Logger log = LoggerFactory.getLogger(ThumbnailService.class);
     private final Map<Path, Image> cache;
     private final int maxEntries;
+    private final ExecutorService executor;
 
     public ThumbnailService() {
         this(128);
@@ -30,6 +34,7 @@ public class ThumbnailService {
                 return size() > ThumbnailService.this.maxEntries;
             }
         });
+        this.executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
     }
 
     public void load(Path path, int targetSize, Consumer<Image> onSuccess, Consumer<Throwable> onError) {
@@ -63,8 +68,17 @@ public class ThumbnailService {
             }
         });
 
-        Thread thread = new Thread(task, "thumb-" + path.getFileName());
-        thread.setDaemon(true);
-        thread.start();
+        try {
+            executor.submit(task);
+        } catch (RejectedExecutionException ex) {
+            log.warn("Execution refusee pour le chargement de miniature {}", path, ex);
+            if (onError != null) {
+                Platform.runLater(() -> onError.accept(ex));
+            }
+        }
+    }
+
+    public void shutdown() {
+        executor.shutdown();
     }
 }
