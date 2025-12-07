@@ -6,6 +6,10 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.stage.Stage;
 import org.example.ui.MainView;
+import org.example.infra.ExportService;
+import org.example.infra.PhotoFileScanner;
+import org.example.infra.ThumbnailService;
+import org.example.ui.service.PhotoLibraryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,6 +17,8 @@ import java.net.URL;
 
 public class PhotoGestionApp extends Application {
     private static final Logger log = LoggerFactory.getLogger(PhotoGestionApp.class);
+    private ThumbnailService thumbnailService;
+    private MainView mainView;
 
     public static void launchApp(String[] args) {
         launch(args);
@@ -23,7 +29,8 @@ public class PhotoGestionApp extends Application {
         Thread.setDefaultUncaughtExceptionHandler(
                 (thread, throwable) -> log.error("Exception non capturee sur {}", thread.getName(), throwable));
 
-        MainView mainView = new MainView();
+        thumbnailService = new ThumbnailService();
+        mainView = new MainView(new PhotoLibraryService(), new PhotoFileScanner(), thumbnailService, new ExportService());
         Scene scene = new Scene(mainView.getRoot(), 1200, 780);
 
         URL themeUrl = getClass().getResource("/ui/theme.css");
@@ -45,8 +52,20 @@ public class PhotoGestionApp extends Application {
                 event.consume();
             }
         });
+        stage.setOnCloseRequest(event -> shutdownThumbnailService());
         stage.show();
 
         log.info("UI principale initialisee");
+    }
+
+    @Override
+    public void stop() {
+        shutdownThumbnailService();
+    }
+
+    private void shutdownThumbnailService() {
+        if (thumbnailService != null) {
+            thumbnailService.shutdown();
+        }
     }
 }
