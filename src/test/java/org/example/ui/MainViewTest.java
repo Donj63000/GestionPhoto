@@ -3,16 +3,24 @@ package org.example.ui;
 import javafx.application.Platform;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.ToggleButton;
+import javafx.scene.control.TextField;
 import javafx.scene.layout.TilePane;
 import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Window;
+import org.example.infra.PhotoFileScanner;
+import org.example.infra.ThumbnailService;
+import org.example.ui.MainView.AlbumSelection;
+import org.example.ui.model.PhotoItem;
+import org.example.ui.service.PhotoLibraryService;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -122,13 +130,39 @@ class MainViewTest {
     }
 
     @Test
-    void shouldShowDialogsForAlbumAndExportActions() throws Exception {
-        MainView view = new MainView();
-        Button createAlbum = findButton(view.getRoot(), "Creer un album", ".secondary-button");
-        Button exportButton = findButton(view.getRoot(), "Exporter", ".secondary-button");
+    void shouldCreateAlbumFromDialogAndRefreshGrid() throws Exception {
+        PhotoLibraryService service = new PhotoLibraryService();
+        List<PhotoItem> selection = service.filter("", PhotoLibraryService.Filter.ALL)
+                .subList(0, Math.min(2, service.all().size()));
+        AlbumSelection albumSelection = new AlbumSelection("Album Test", selection);
 
+        Dialog<AlbumSelection> dialog = new Dialog<>() {
+            @Override
+            public java.util.Optional<AlbumSelection> showAndWait() {
+                return java.util.Optional.of(albumSelection);
+            }
+        };
+
+        AlbumTestView view = new AlbumTestView(service, dialog);
+        Button createAlbum = findButton(view.getRoot(), "Creer un album", ".secondary-button");
         runOnFxThread(createAlbum::fire);
-        assertEquals("Creation d'album en preparation", findStatusLabel(view.getRoot()).getText());
+
+        assertEquals("Album 'Album Test' cree", findStatusLabel(view.getRoot()).getText());
+
+        Button albumsNav = findButton(view.getRoot(), "Albums", ".nav-button");
+        runOnFxThread(albumsNav::fire);
+
+        runOnFxThread(() -> ((TextField) view.getRoot().lookup(".search-field")).setText("Album Test"));
+
+        TilePane grid = (TilePane) ((VBox) ((ScrollPane) view.getRoot().getCenter())
+                .getContent()).getChildren().get(1).lookup(".gallery-grid");
+        assertTrue(grid.getChildren().size() >= selection.size(), "Grid should show newly album-tagged photos");
+    }
+
+    @Test
+    void shouldShowExportPreparationMessage() throws Exception {
+        MainView view = new MainView();
+        Button exportButton = findButton(view.getRoot(), "Exporter", ".secondary-button");
 
         runOnFxThread(exportButton::fire);
         assertEquals("Export en preparation", findStatusLabel(view.getRoot()).getText());
@@ -177,6 +211,20 @@ class MainViewTest {
         @Override
         protected DirectoryChooser createDirectoryChooser() {
             return chooser;
+        }
+    }
+
+    private static class AlbumTestView extends MainView {
+        private final Dialog<AlbumSelection> dialog;
+
+        AlbumTestView(PhotoLibraryService service, Dialog<AlbumSelection> dialog) {
+            super(service, new PhotoFileScanner(), new ThumbnailService());
+            this.dialog = dialog;
+        }
+
+        @Override
+        protected Dialog<AlbumSelection> buildAlbumDialog(Window owner, List<PhotoItem> activePhotos) {
+            return dialog;
         }
     }
 }
