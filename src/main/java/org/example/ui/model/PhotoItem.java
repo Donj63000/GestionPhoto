@@ -10,6 +10,7 @@ public record PhotoItem(Path path,
                         LocalDate date,
                         String sizeLabel,
                         List<String> tags,
+                        List<String> albums,
                         boolean favorite) {
     public PhotoItem {
         Objects.requireNonNull(path, "path");
@@ -17,5 +18,6 @@ public record PhotoItem(Path path,
         Objects.requireNonNull(date, "date");
         Objects.requireNonNull(sizeLabel, "sizeLabel");
         tags = tags == null ? List.of() : List.copyOf(tags);
+        albums = albums == null ? List.of() : List.copyOf(albums);
     }
 }
