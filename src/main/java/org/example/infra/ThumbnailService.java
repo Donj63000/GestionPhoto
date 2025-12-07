@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -41,44 +42,19 @@ public class ThumbnailService {
     }
 
     public void load(Path path, int targetSize, Consumer<Image> onSuccess, Consumer<Throwable> onError) {
-        if (path == null || onSuccess == null || !Files.exists(path)) {
+        submit(path, targetSize, onSuccess, onError, true);
+    }
+
+    public void preload(Path path, int targetSize) {
+        submit(path, targetSize, null, null, false);
+    }
+
+    public void evictExcept(Set<Path> keepPaths) {
+        if (keepPaths == null || keepPaths.isEmpty()) {
+            cache.clear();
             return;
         }
-        Image cached = cache.get(path);
-        if (cached != null) {
-            onSuccess.accept(cached);
-            return;
-        }
-
-        Task<Image> task = new Task<>() {
-            @Override
-            protected Image call() {
-                return new Image(path.toUri().toString(), targetSize, targetSize, true, true, true);
-            }
-        };
-
-        task.setOnSucceeded(event -> {
-            Image image = task.getValue();
-            cache.put(path, image);
-            Platform.runLater(() -> onSuccess.accept(image));
-        });
-
-        task.setOnFailed(event -> {
-            Throwable ex = task.getException();
-            log.warn("Echec de chargement de miniature pour {}", path, ex);
-            if (onError != null) {
-                Platform.runLater(() -> onError.accept(ex));
-            }
-        });
-
-        try {
-            executor.submit(task);
-        } catch (RejectedExecutionException ex) {
-            log.warn("Execution refusee pour le chargement de miniature {}", path, ex);
-            if (onError != null) {
-                Platform.runLater(() -> onError.accept(ex));
-            }
-        }
+        cache.keySet().removeIf(path -> !keepPaths.contains(path));
     }
 
     public void shutdown() {
@@ -103,5 +79,67 @@ public class ThumbnailService {
             thread.setDaemon(false);
             return thread;
         };
+    }
+
+    private void submit(Path path, int targetSize, Consumer<Image> onSuccess, Consumer<Throwable> onError,
+            boolean deliverOnFxThread) {
+        if (path == null || !Files.exists(path)) {
+            return;
+        }
+        Image cached = cache.get(path);
+        if (cached != null) {
+            if (onSuccess != null) {
+                if (deliverOnFxThread) {
+                    Platform.runLater(() -> onSuccess.accept(cached));
+                } else {
+                    onSuccess.accept(cached);
+                }
+            }
+            return;
+        }
+
+        Task<Image> task = new Task<>() {
+            @Override
+            protected Image call() {
+                return new Image(path.toUri().toString(), targetSize, targetSize, true, true, true);
+            }
+        };
+
+        task.setOnSucceeded(event -> {
+            Image image = task.getValue();
+            cache.put(path, image);
+            if (onSuccess != null) {
+                if (deliverOnFxThread) {
+                    Platform.runLater(() -> onSuccess.accept(image));
+                } else {
+                    onSuccess.accept(image);
+                }
+            }
+        });
+
+        task.setOnFailed(event -> {
+            Throwable ex = task.getException();
+            log.warn("Echec de chargement de miniature pour {}", path, ex);
+            if (onError != null) {
+                if (deliverOnFxThread) {
+                    Platform.runLater(() -> onError.accept(ex));
+                } else {
+                    onError.accept(ex);
+                }
+            }
+        });
+
+        try {
+            executor.submit(task);
+        } catch (RejectedExecutionException ex) {
+            log.warn("Execution refusee pour le chargement de miniature {}", path, ex);
+            if (onError != null) {
+                if (deliverOnFxThread) {
+                    Platform.runLater(() -> onError.accept(ex));
+                } else {
+                    onError.accept(ex);
+                }
+            }
+        }
     }
 }
