@@ -160,6 +160,7 @@
         <version>0.0.8</version>
         <configuration>
           <mainClass>org.example.app.PhotoGestionApp</mainClass>
+          <executable>${java.home}/bin/java</executable>
         </configuration>
       </plugin>
     </plugins>

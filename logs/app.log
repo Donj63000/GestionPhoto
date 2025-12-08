@@ -29,3 +29,12 @@
 2025-12-08 01:19:51.706 INFO  [JavaFX Application Thread] o.e.ui.service.PhotoLibraryService - PhotoLibraryService initialise sans contenu; en attente d'import ou de scan
 2025-12-08 01:19:51.980 INFO  [JavaFX Application Thread] org.example.ui.MainView - Grid rafraichie: aucun element (filtre=ALL, recherche='', bibliotheque vide=true)
 2025-12-08 01:19:52.690 INFO  [JavaFX Application Thread] org.example.app.PhotoGestionApp - UI principale initialisee (MainView)
+2025-12-08 02:21:13.377 INFO  [JavaFX Application Thread] o.e.ui.service.PhotoLibraryService - PhotoLibraryService initialise sans contenu; en attente d'import ou de scan
+2025-12-08 02:21:13.623 INFO  [JavaFX Application Thread] org.example.ui.MainView - Grid rafraichie: aucun element (filtre=ALL, recherche='', bibliotheque vide=true)
+2025-12-08 02:21:14.329 INFO  [JavaFX Application Thread] org.example.app.PhotoGestionApp - UI principale initialisee (MainView)
+2025-12-08 02:37:34.788 INFO  [global-scan-task] org.example.infra.PhotoFileScanner - Scan termine: 3493 fichiers images dans C:\Users\nodig\Pictures
+2025-12-08 02:37:34.831 WARN  [global-scan-task] org.example.infra.PhotoFileScanner - Lecture ignoree pour C:\Users\nodig\Documents\Ma musique: C:\Users\nodig\Documents\Ma musique
+2025-12-08 02:37:34.832 WARN  [global-scan-task] org.example.infra.PhotoFileScanner - Lecture ignoree pour C:\Users\nodig\Documents\Mes images: C:\Users\nodig\Documents\Mes images
+2025-12-08 02:37:34.832 WARN  [global-scan-task] org.example.infra.PhotoFileScanner - Lecture ignoree pour C:\Users\nodig\Documents\Mes vidéos: C:\Users\nodig\Documents\Mes vidéos
+2025-12-08 02:37:35.696 INFO  [global-scan-task] org.example.infra.PhotoFileScanner - Scan termine: 146 fichiers images dans C:\Users\nodig\Documents
+2025-12-08 02:37:35.735 WARN  [JavaFX Application Thread] org.example.ui.MainView - Dossiers ignores pendant le scan: Dossiers ignores (acces limite): C:\Users\nodig\Documents\Ma musique, C:\Users\nodig\Documents\Mes images, C:\Users\nodig\Documents\Mes vidéos ... (+13)

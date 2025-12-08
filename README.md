@@ -18,6 +18,7 @@ $env:JAVA_HOME="C:\Program Files\Java\jdk-24"
 $env:Path="$env:JAVA_HOME\bin;$env:Path"
 mvn -Pwindows -DskipTests javafx:run
 ```
+Dans IntelliJ, verifie aussi que le **Maven runner** et le **Project SDK** pointent sur JDK 21+ (Settings > Build Tools > Maven > Runner).
 
 ## Lancement local sans erreur JavaFX
 - Utilise un JDK 21+ (mets a jour `JAVA_HOME` si besoin).
