@@ -959,6 +959,18 @@ public class MainView {
         .thenComparing(PhotoItem::title, String.CASE_INSENSITIVE_ORDER);
   }
 
+  private Comparator<PhotoItem> byName() {
+    return Comparator.comparing(PhotoItem::title, String.CASE_INSENSITIVE_ORDER);
+  }
+
+  private Comparator<PhotoItem> byParentPath() {
+    return Comparator.comparing(
+        item -> {
+          Path parent = item.path() == null ? null : item.path().getParent();
+          return parent == null ? "" : parent.toString().toLowerCase(Locale.ROOT);
+        });
+  }
+
   static class ScanSelection {
     private final List<PhotoItem> photos;
     private final String album;
@@ -1434,16 +1446,14 @@ public class MainView {
     TextField filterField = new TextField();
     filterField.setPromptText("Filtrer par nom ou album");
     filterField.getStyleClass().add("dialog-field");
+    Comparator<PhotoItem> byName = byName();
+    Comparator<PhotoItem> byPath = byParentPath();
     ComboBox<SelectionPreset> filterPreset =
         new ComboBox<>(
             FXCollections.observableArrayList(
-                new SelectionPreset("Nom", SelectionFilterMode.NAME, null),
+                new SelectionPreset("Nom", SelectionFilterMode.NAME, byName),
                 new SelectionPreset("Date (plus recent)", SelectionFilterMode.DATE, byMostRecent()),
-                new SelectionPreset("Chemin commun", SelectionFilterMode.PATH, null),
-                new SelectionPreset(
-                    "Nom A-Z (tri)",
-                    SelectionFilterMode.NAME,
-                    Comparator.comparing(PhotoItem::title, String.CASE_INSENSITIVE_ORDER))));
+                new SelectionPreset("Chemin commun", SelectionFilterMode.PATH, byPath)));
     filterPreset.getSelectionModel().selectFirst();
     filterPreset.getStyleClass().add("dialog-choice");
     filterPreset.setPrefWidth(170);
