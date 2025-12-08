@@ -1,18 +1,19 @@
 package org.example.app;
 
-import java.net.URL;
 import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
-import org.example.core.ScanService;
-import org.example.infra.FileSystemGateway;
-import org.example.ui.GalleryView;
+import org.example.infra.ExportService;
+import org.example.infra.PhotoFileScanner;
+import org.example.infra.ThumbnailService;
+import org.example.ui.MainView;
+import org.example.ui.service.PhotoLibraryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class PhotoGestionApp extends Application {
   private static final Logger log = LoggerFactory.getLogger(PhotoGestionApp.class);
-  private GalleryView galleryView;
+  private MainView mainView;
 
   public static void launchApp(String[] args) {
     launch(args);
@@ -24,32 +25,37 @@ public class PhotoGestionApp extends Application {
         (thread, throwable) ->
             log.error("Exception non capturee sur {}", thread.getName(), throwable));
 
-    FileSystemGateway gateway = new FileSystemGateway();
-    ScanService scanService = new ScanService(gateway);
-    galleryView = new GalleryView(scanService);
-    Scene scene = new Scene(galleryView.getRoot(), 960, 640);
+    mainView =
+        new MainView(
+            new PhotoLibraryService(),
+            new PhotoFileScanner(),
+            new ThumbnailService(),
+            new ExportService());
 
-    URL themeUrl = getClass().getResource("/ui/theme.css");
+    Scene scene = new Scene(mainView.getRoot(), 1200, 800);
+
+    String theme = "/ui/theme.css";
+    var themeUrl = getClass().getResource(theme);
     if (themeUrl != null) {
       scene.getStylesheets().add(themeUrl.toExternalForm());
     } else {
-      log.warn("Feuille de style ui/theme.css introuvable");
+      log.warn("Feuille de style {} introuvable", theme);
     }
 
-    stage.setTitle("Photos Gestion - Import");
+    stage.setTitle("Photos Gestion");
     stage.setScene(scene);
-    stage.setMinWidth(800);
-    stage.setMinHeight(560);
+    stage.setMinWidth(960);
+    stage.setMinHeight(640);
 
     stage.show();
 
-    log.info("UI principale initialisee");
+    log.info("UI principale initialisee (MainView)");
   }
 
   @Override
   public void stop() {
-    if (galleryView != null) {
-      galleryView.shutdown();
+    if (mainView != null) {
+      mainView.shutdown();
     }
   }
 }

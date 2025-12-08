@@ -86,6 +86,30 @@
         </configuration>
       </plugin>
       <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>3.5.0</version>
+        <executions>
+          <execution>
+            <id>enforce-java</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireJavaVersion>
+                  <version>[21,)</version>
+                  <message>
+                    Java 21 ou plus recent est requis (JavaFX 21). Mets a jour JAVA_HOME ou l'IDE pour pointer dessus.
+                  </message>
+                </requireJavaVersion>
+              </rules>
+              <failFast>true</failFast>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
         <groupId>org.jacoco</groupId>
         <artifactId>jacoco-maven-plugin</artifactId>
         <version>${jacoco.version}</version>
@@ -133,9 +157,9 @@
       <plugin>
         <groupId>org.openjfx</groupId>
         <artifactId>javafx-maven-plugin</artifactId>
-        <version>0.0.9</version>
+        <version>0.0.8</version>
         <configuration>
-          <mainClass>org.example.app.Main</mainClass>
+          <mainClass>org.example.app.PhotoGestionApp</mainClass>
         </configuration>
       </plugin>
     </plugins>

@@ -85,6 +85,16 @@ public class MainView {
   private int totalPages = 1;
   private static final int PAGE_SIZE = 20;
   private static final int DEFAULT_SCAN_DEPTH = Integer.MAX_VALUE;
+  private static final Set<String> WINDOWS_SPECIAL_DIRS =
+      Set.of(
+          "my music",
+          "ma musique",
+          "my pictures",
+          "mes images",
+          "application data",
+          "local settings",
+          "recent",
+          "sendto");
 
   private enum SelectionFilterMode {
     NAME,
@@ -139,6 +149,10 @@ public class MainView {
 
   public BorderPane getRoot() {
     return root;
+  }
+
+  public void shutdown() {
+    thumbnailService.shutdown();
   }
 
   private Node buildHeader() {
@@ -1278,7 +1292,8 @@ public class MainView {
     task.setOnFailed(
         event -> {
           log.error("Scan global echoue", task.getException());
-          statusLabel.setText("Erreur pendant le scan");
+          String hint = roots.isEmpty() ? "" : " (ex: " + roots.get(0) + ")";
+          statusLabel.setText("Erreur pendant le scan" + hint);
           if (progressDialog != null) {
             progressDialog.close();
           }
@@ -1743,7 +1758,6 @@ public class MainView {
     addIfUsable(roots, home.resolve("Images"));
     addIfUsable(roots, home.resolve("Documents"));
     addIfUsable(roots, home.resolve("Photos"));
-    addIfUsable(roots, home);
     exploreExternalMounts(Paths.get("/media"), roots);
     exploreExternalMounts(Paths.get("/mnt"), roots);
     exploreExternalMounts(Paths.get("/Volumes"), roots);
@@ -1768,7 +1782,22 @@ public class MainView {
   }
 
   private boolean isUsableDirectory(Path path) {
-    return path != null && Files.isDirectory(path) && Files.isReadable(path);
+    if (path == null) {
+      return false;
+    }
+    try {
+      if (!Files.isDirectory(path) || !Files.isReadable(path)) {
+        return false;
+      }
+      Path name = path.getFileName();
+      if (name != null && WINDOWS_SPECIAL_DIRS.contains(name.toString().toLowerCase(Locale.ROOT))) {
+        return false;
+      }
+      return true;
+    } catch (Exception e) {
+      log.debug("Repertoire ignore (non lisible): {} ({})", path, e.getMessage());
+      return false;
+    }
   }
 
   private void runScan(Window owner, Path root) {

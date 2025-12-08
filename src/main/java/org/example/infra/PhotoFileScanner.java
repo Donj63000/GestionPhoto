@@ -1,6 +1,7 @@
 package org.example.infra;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.FileVisitOption;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -38,7 +39,15 @@ public class PhotoFileScanner {
           "program files (x86)",
           "appdata",
           "$recycle.bin",
-          "system volume information");
+          "system volume information",
+          "my music",
+          "ma musique",
+          "my pictures",
+          "mes images",
+          "application data",
+          "local settings",
+          "recent",
+          "sendto");
 
   public record ScanOptions(
       boolean skipHidden, boolean skipSystem, int maxDepth, long maxSizeBytes, LocalDate minDate) {
@@ -112,8 +121,11 @@ public class PhotoFileScanner {
         }
         int rootAdded = aggregated.size() - itemsBefore;
         log.info("Scan termine: {} fichiers images dans {}", rootAdded, root);
-      } catch (IOException e) {
+      } catch (IOException | UncheckedIOException e) {
         log.error("Echec du scan du dossier {}", root, e);
+        if (!skippedDirectories.contains(root)) {
+          skippedDirectories.add(root);
+        }
       }
     }
     aggregated.sort(Comparator.comparing(PhotoItem::date).reversed());
