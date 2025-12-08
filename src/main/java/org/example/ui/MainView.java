@@ -42,6 +42,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.image.ImageView;
+import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
@@ -59,6 +60,7 @@ import org.example.infra.PhotoFileScanner;
 import org.example.infra.ThumbnailService;
 import org.example.ui.model.PhotoItem;
 import org.example.ui.service.PhotoLibraryService;
+import org.example.ui.service.PhotoLibraryService.AlbumInfo;
 import org.example.ui.service.PhotoLibraryService.Filter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,6 +85,7 @@ public class MainView {
   private final Label gridTitleLabel;
   private int currentPage = 1;
   private int totalPages = 1;
+  private boolean showAlbumList = true;
   private static final int PAGE_SIZE = 20;
   private static final int DEFAULT_SCAN_DEPTH = Integer.MAX_VALUE;
   private static final Set<String> WINDOWS_SPECIAL_DIRS =
@@ -436,6 +439,71 @@ public class MainView {
     }
   }
 
+  private final class AlbumCard extends VBox {
+    private final ImageView imageView;
+    private final Label nameLabel;
+    private final Label infoLabel;
+    private final String albumName;
+    private final PhotoItem cover;
+
+    AlbumCard(AlbumInfo info) {
+      super(8);
+      this.albumName = info.name();
+      this.cover = info.cover();
+
+      getStyleClass().add("photo-card");
+      setPadding(new Insets(10));
+
+      setOnMouseClicked(
+          event -> {
+            if (event.getButton() == MouseButton.PRIMARY) {
+              openAlbum();
+            }
+          });
+
+      imageView = new ImageView();
+      imageView.setFitWidth(260);
+      imageView.setFitHeight(160);
+      imageView.setPreserveRatio(true);
+      imageView.setSmooth(true);
+
+      nameLabel = new Label(info.name());
+      nameLabel.getStyleClass().add("photo-title");
+
+      String meta = info.photoCount() + " photos";
+      if (info.mostRecentDate() != null) {
+        meta += " - mis a jour le " + info.mostRecentDate();
+      }
+      infoLabel = new Label(meta);
+      infoLabel.getStyleClass().add("photo-meta");
+
+      getChildren().addAll(imageView, nameLabel, infoLabel);
+
+      if (cover != null && Files.exists(cover.path())) {
+        thumbnailService.load(
+            cover.path(),
+            320,
+            imageView::setImage,
+            ex ->
+                log.warn(
+                    "Miniature indisponible pour l'album {} ({})",
+                    albumName,
+                    cover.path().getFileName()));
+      }
+    }
+
+    private void openAlbum() {
+      searchField.setText(albumName);
+      filterGroup.getToggles().stream()
+          .filter(toggle -> toggle.getUserData() == Filter.ALBUMS)
+          .findFirst()
+          .ifPresent(toggle -> toggle.setSelected(true));
+      showAlbumList = false;
+      resetPagination();
+      refreshGridImmediately();
+    }
+  }
+
   private final class SelectionTile extends VBox {
     private final CheckBox checkBox;
     private final ImageView imageView;
@@ -548,6 +616,7 @@ public class MainView {
     button.setUserData(filter);
     button.setOnAction(
         event -> {
+          showAlbumList = filter == Filter.ALBUMS;
           resetPagination();
           requestRefresh();
         });
@@ -579,6 +648,7 @@ public class MainView {
         .filter(toggle -> toggle.getUserData() == filter)
         .findFirst()
         .ifPresent(toggle -> toggle.setSelected(true));
+    showAlbumList = filter == Filter.ALBUMS;
     log.info("Navigation vers {}", filter);
     resetPagination();
     requestRefresh();
@@ -614,6 +684,12 @@ public class MainView {
   private void refreshGrid() {
     Filter activeFilter = getActiveFilter();
     String search = searchField.getText();
+
+    if (activeFilter == Filter.ALBUMS && showAlbumList) {
+      refreshAlbumsGrid(search);
+      return;
+    }
+
     List<PhotoItem> filtered = photoService.filter(search, activeFilter);
     int totalCount = filtered.size();
     totalPages = Math.max(1, (int) Math.ceil((double) totalCount / PAGE_SIZE));
@@ -690,18 +766,92 @@ public class MainView {
             + ")");
   }
 
+  private void refreshAlbumsGrid(String search) {
+    List<AlbumInfo> albums = photoService.listAlbums(search);
+    int totalCount = albums.size();
+
+    totalPages = Math.max(1, (int) Math.ceil((double) totalCount / PAGE_SIZE));
+    if (currentPage > totalPages) {
+      currentPage = totalPages;
+    }
+
+    cleanupCaches(Set.of(), List.of());
+
+    if (totalCount == 0) {
+      currentPage = 1;
+      updateGridHeader(0, 0, currentPage, totalPages);
+      updatePaginationControls();
+      boolean emptyLibrary = photoService.all().isEmpty();
+      grid.getChildren().setAll(buildEmptyAlbumsState(emptyLibrary));
+      statusLabel.setText(
+          emptyLibrary
+              ? "Aucun album car aucune photo n'a encore ete importee."
+              : "Aucun album ne correspond a ce filtre.");
+      log.info(
+          "Grille albums vide (recherche='{}')", search == null ? "" : search.trim());
+      return;
+    }
+
+    int fromIndex = Math.min((currentPage - 1) * PAGE_SIZE, totalCount);
+    int toIndex = Math.min(fromIndex + PAGE_SIZE, totalCount);
+    List<AlbumInfo> page = albums.subList(fromIndex, toIndex);
+
+    updateGridHeader(toIndex - fromIndex, totalCount, currentPage, totalPages);
+    updatePaginationControls();
+
+    grid.getChildren().clear();
+
+    Set<Path> prefetchPaths = new LinkedHashSet<>();
+    for (AlbumInfo info : page) {
+      AlbumCard card = new AlbumCard(info);
+      grid.getChildren().add(card);
+      if (info.cover() != null) {
+        prefetchPaths.add(info.cover().path());
+      }
+    }
+
+    prefetchNext(new ArrayList<>(prefetchPaths));
+
+    log.info(
+        "Grille albums rafraichie: {} albums (recherche='{}', page {}/{})",
+        totalCount,
+        search == null ? "" : search.trim(),
+        currentPage,
+        totalPages);
+
+    statusLabel.setText(
+        "Affichage des albums: "
+            + (toIndex - fromIndex)
+            + " / "
+            + totalCount
+            + " (page "
+            + currentPage
+            + "/"
+            + totalPages
+            + ")");
+  }
+
   private void updateGridHeader(int displayedCount, int totalCount, int page, int totalPages) {
-    StringBuilder builder = new StringBuilder("Toutes vos photos scannees");
+    Filter activeFilter = getActiveFilter();
+
+    String prefix =
+        switch (activeFilter) {
+          case FAVORITES -> "Vos photos favorites";
+          case RECENTS -> "Vos photos recentes";
+          case ALBUMS -> showAlbumList ? "Vos albums" : "Photos d'albums";
+          case ALL -> "Toutes vos photos scannees";
+        };
+
+    StringBuilder builder = new StringBuilder(prefix);
     builder
         .append(" (")
         .append(displayedCount)
         .append(" / ")
         .append(totalCount)
-        .append(" (page ")
+        .append(", page ")
         .append(page)
         .append("/")
         .append(totalPages)
-        .append("))")
         .append(")");
     gridTitleLabel.setText(builder.toString());
   }
@@ -741,6 +891,31 @@ public class MainView {
     }
 
     thumbnailService.evictExcept(keepPaths);
+  }
+
+  private Node buildEmptyAlbumsState(boolean emptyLibrary) {
+    VBox emptyBox = new VBox(8);
+    emptyBox.setAlignment(Pos.CENTER);
+    emptyBox.setPadding(new Insets(24));
+    emptyBox.getStyleClass().add("empty-state");
+
+    Label title =
+        new Label(
+            emptyLibrary
+                ? "Aucun album car aucune photo n'a encore ete importee"
+                : "Aucun album ne correspond a ce filtre");
+    title.getStyleClass().add("section-title");
+
+    Label subtitle =
+        new Label(
+            emptyLibrary
+                ? "Importez un dossier puis utilisez 'Creer un album' pour commencer."
+                : "Essayez un autre nom d'album ou supprimez le filtre.");
+    subtitle.getStyleClass().add("section-subtitle");
+    subtitle.setWrapText(true);
+
+    emptyBox.getChildren().addAll(title, subtitle);
+    return emptyBox;
   }
 
   private Node buildEmptyState(boolean emptyLibrary) {

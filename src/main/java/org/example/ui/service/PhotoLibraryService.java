@@ -8,7 +8,9 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 import org.example.ui.model.PhotoItem;
 import org.slf4j.Logger;
@@ -110,6 +112,49 @@ public class PhotoLibraryService {
         .flatMap(item -> item.albums().stream())
         .collect(
             Collectors.toCollection(() -> new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER)));
+  }
+
+  // Resume d'un album pour l'affichage
+  public record AlbumInfo(String name, int photoCount, LocalDate mostRecentDate, PhotoItem cover) {}
+
+  /** Retourne la liste des albums presents, avec le nombre de photos et une couverture. */
+  public synchronized List<AlbumInfo> listAlbums(String search) {
+    String normalized = search == null ? "" : search.trim().toLowerCase(Locale.ROOT);
+
+    Map<String, List<PhotoItem>> byAlbum =
+        new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+    for (PhotoItem item : items) {
+      for (String album : item.albums()) {
+        if (album == null || album.isBlank()) {
+          continue;
+        }
+        byAlbum.computeIfAbsent(album, k -> new ArrayList<>()).add(item);
+      }
+    }
+
+    return byAlbum.entrySet().stream()
+        .map(
+            entry -> {
+              String albumName = entry.getKey();
+              List<PhotoItem> photos = entry.getValue();
+
+              // On recupere la photo la plus recente pour la couverture
+              PhotoItem mostRecent =
+                  photos.stream()
+                      .max(Comparator.comparing(PhotoItem::date))
+                      .orElse(null);
+
+              LocalDate mostRecentDate = mostRecent != null ? mostRecent.date() : null;
+
+              int count = photos.size();
+              return new AlbumInfo(albumName, count, mostRecentDate, mostRecent);
+            })
+        .filter(
+            info ->
+                normalized.isEmpty()
+                    || info.name().toLowerCase(Locale.ROOT).contains(normalized))
+        .toList();
   }
 
   public synchronized boolean contains(Path path) {

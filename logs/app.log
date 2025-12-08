@@ -69,3 +69,67 @@
 2025-12-08 02:46:25.277 INFO  [JavaFX Application Thread] org.example.ui.MainView - Grid rafraichie: 3 elements (filtre=ALBUMS, recherche='', page 1/1)
 2025-12-08 02:46:28.557 INFO  [JavaFX Application Thread] org.example.ui.MainView - Navigation vers ALBUMS
 2025-12-08 02:46:28.845 INFO  [JavaFX Application Thread] org.example.ui.MainView - Grid rafraichie: 3 elements (filtre=ALBUMS, recherche='', page 1/1)
+2025-12-08 03:16:34.983 INFO  [JavaFX Application Thread] o.e.ui.service.PhotoLibraryService - PhotoLibraryService initialise sans contenu; en attente d'import ou de scan
+2025-12-08 03:16:35.217 INFO  [JavaFX Application Thread] org.example.ui.MainView - Grid rafraichie: aucun element (filtre=ALL, recherche='', bibliotheque vide=true)
+2025-12-08 03:16:35.921 INFO  [JavaFX Application Thread] org.example.app.PhotoGestionApp - UI principale initialisee (MainView)
+2025-12-08 03:16:41.643 INFO  [global-scan-task] org.example.infra.PhotoFileScanner - Scan termine: 3495 fichiers images dans C:\Users\nodig\Pictures
+2025-12-08 03:16:41.813 WARN  [global-scan-task] org.example.infra.PhotoFileScanner - Lecture ignoree pour C:\Users\nodig\Documents\Ma musique: C:\Users\nodig\Documents\Ma musique
+2025-12-08 03:16:41.814 WARN  [global-scan-task] org.example.infra.PhotoFileScanner - Lecture ignoree pour C:\Users\nodig\Documents\Mes images: C:\Users\nodig\Documents\Mes images
+2025-12-08 03:16:41.814 WARN  [global-scan-task] org.example.infra.PhotoFileScanner - Lecture ignoree pour C:\Users\nodig\Documents\Mes vidéos: C:\Users\nodig\Documents\Mes vidéos
+2025-12-08 03:16:42.701 INFO  [global-scan-task] org.example.infra.PhotoFileScanner - Scan termine: 146 fichiers images dans C:\Users\nodig\Documents
+2025-12-08 03:16:42.750 WARN  [JavaFX Application Thread] org.example.ui.MainView - Dossiers ignores pendant le scan: Dossiers ignores (acces limite): C:\Users\nodig\Documents\Ma musique, C:\Users\nodig\Documents\Mes images, C:\Users\nodig\Documents\Mes vidéos ... (+13)
+2025-12-08 03:17:38.133 INFO  [JavaFX Application Thread] o.e.ui.service.PhotoLibraryService - Ajout termine: 0 doublons ignores, taille finale 5
+2025-12-08 03:17:38.151 INFO  [JavaFX Application Thread] org.example.ui.MainView - Grid rafraichie: 5 elements (filtre=ALL, recherche='', page 1/1)
+2025-12-08 03:17:38.174 INFO  [JavaFX Application Thread] org.example.ui.MainView - Scan global termine: 5 ajouts, 0 doublons
+2025-12-08 03:17:58.381 INFO  [global-scan-task] org.example.infra.PhotoFileScanner - Scan termine: 3496 fichiers images dans C:\Users\nodig\Pictures
+2025-12-08 03:17:58.413 WARN  [global-scan-task] org.example.infra.PhotoFileScanner - Lecture ignoree pour C:\Users\nodig\Documents\Ma musique: C:\Users\nodig\Documents\Ma musique
+2025-12-08 03:17:58.413 WARN  [global-scan-task] org.example.infra.PhotoFileScanner - Lecture ignoree pour C:\Users\nodig\Documents\Mes images: C:\Users\nodig\Documents\Mes images
+2025-12-08 03:17:58.413 WARN  [global-scan-task] org.example.infra.PhotoFileScanner - Lecture ignoree pour C:\Users\nodig\Documents\Mes vidéos: C:\Users\nodig\Documents\Mes vidéos
+2025-12-08 03:17:59.159 INFO  [global-scan-task] org.example.infra.PhotoFileScanner - Scan termine: 146 fichiers images dans C:\Users\nodig\Documents
+2025-12-08 03:17:59.206 WARN  [JavaFX Application Thread] org.example.ui.MainView - Dossiers ignores pendant le scan: Dossiers ignores (acces limite): C:\Users\nodig\Documents\Ma musique, C:\Users\nodig\Documents\Mes images, C:\Users\nodig\Documents\Mes vidéos ... (+13)
+2025-12-08 03:18:11.499 INFO  [JavaFX Application Thread] o.e.ui.service.PhotoLibraryService - Ajout termine: 0 doublons ignores, taille finale 11
+2025-12-08 03:18:11.503 INFO  [JavaFX Application Thread] org.example.ui.MainView - Grid rafraichie: 11 elements (filtre=ALL, recherche='', page 1/1)
+2025-12-08 03:18:11.525 INFO  [JavaFX Application Thread] org.example.ui.MainView - Scan global termine: 6 ajouts, 5 doublons
+2025-12-08 03:20:34.317 INFO  [global-scan-task] org.example.infra.PhotoFileScanner - Scan termine: 3498 fichiers images dans C:\Users\nodig\Pictures
+2025-12-08 03:20:34.324 WARN  [global-scan-task] org.example.infra.PhotoFileScanner - Lecture ignoree pour C:\Users\nodig\Documents\Ma musique: C:\Users\nodig\Documents\Ma musique
+2025-12-08 03:20:34.324 WARN  [global-scan-task] org.example.infra.PhotoFileScanner - Lecture ignoree pour C:\Users\nodig\Documents\Mes images: C:\Users\nodig\Documents\Mes images
+2025-12-08 03:20:34.324 WARN  [global-scan-task] org.example.infra.PhotoFileScanner - Lecture ignoree pour C:\Users\nodig\Documents\Mes vidéos: C:\Users\nodig\Documents\Mes vidéos
+2025-12-08 03:20:34.416 INFO  [global-scan-task] org.example.infra.PhotoFileScanner - Scan termine: 146 fichiers images dans C:\Users\nodig\Documents
+2025-12-08 03:20:34.446 WARN  [JavaFX Application Thread] org.example.ui.MainView - Dossiers ignores pendant le scan: Dossiers ignores (acces limite): C:\Users\nodig\Documents\Ma musique, C:\Users\nodig\Documents\Mes images, C:\Users\nodig\Documents\Mes vidéos ... (+13)
+2025-12-08 03:20:56.364 INFO  [JavaFX Application Thread] o.e.ui.service.PhotoLibraryService - Ajout termine: 0 doublons ignores, taille finale 15
+2025-12-08 03:20:56.368 INFO  [JavaFX Application Thread] org.example.ui.MainView - Grid rafraichie: 15 elements (filtre=ALL, recherche='', page 1/1)
+2025-12-08 03:20:56.391 INFO  [JavaFX Application Thread] org.example.ui.MainView - Scan global termine: 4 ajouts, 11 doublons
+2025-12-08 03:21:37.691 INFO  [global-scan-task] org.example.infra.PhotoFileScanner - Scan termine: 3498 fichiers images dans C:\Users\nodig\Pictures
+2025-12-08 03:21:37.700 WARN  [global-scan-task] org.example.infra.PhotoFileScanner - Lecture ignoree pour C:\Users\nodig\Documents\Ma musique: C:\Users\nodig\Documents\Ma musique
+2025-12-08 03:21:37.700 WARN  [global-scan-task] org.example.infra.PhotoFileScanner - Lecture ignoree pour C:\Users\nodig\Documents\Mes images: C:\Users\nodig\Documents\Mes images
+2025-12-08 03:21:37.701 WARN  [global-scan-task] org.example.infra.PhotoFileScanner - Lecture ignoree pour C:\Users\nodig\Documents\Mes vidéos: C:\Users\nodig\Documents\Mes vidéos
+2025-12-08 03:21:37.877 INFO  [global-scan-task] org.example.infra.PhotoFileScanner - Scan termine: 146 fichiers images dans C:\Users\nodig\Documents
+2025-12-08 03:21:37.909 WARN  [JavaFX Application Thread] org.example.ui.MainView - Dossiers ignores pendant le scan: Dossiers ignores (acces limite): C:\Users\nodig\Documents\Ma musique, C:\Users\nodig\Documents\Mes images, C:\Users\nodig\Documents\Mes vidéos ... (+13)
+2025-12-08 03:22:17.216 INFO  [JavaFX Application Thread] org.example.ui.MainView - Creation d'album demarree
+2025-12-08 03:22:25.932 INFO  [JavaFX Application Thread] o.e.ui.service.PhotoLibraryService - Album 'SOUVENIRS' cree avec 15 photos
+2025-12-08 03:22:26.225 INFO  [JavaFX Application Thread] org.example.ui.MainView - Grid rafraichie: 15 elements (filtre=ALL, recherche='', page 1/1)
+2025-12-08 03:22:28.795 INFO  [JavaFX Application Thread] org.example.ui.MainView - Navigation vers ALBUMS
+2025-12-08 03:22:29.088 INFO  [JavaFX Application Thread] org.example.ui.MainView - Grid rafraichie: 15 elements (filtre=ALBUMS, recherche='', page 1/1)
+2025-12-08 03:22:29.366 INFO  [JavaFX Application Thread] org.example.ui.MainView - Navigation vers ALBUMS
+2025-12-08 03:22:29.539 INFO  [JavaFX Application Thread] org.example.ui.MainView - Navigation vers ALBUMS
+2025-12-08 03:22:29.824 INFO  [JavaFX Application Thread] org.example.ui.MainView - Grid rafraichie: 15 elements (filtre=ALBUMS, recherche='', page 1/1)
+2025-12-08 03:22:32.180 INFO  [JavaFX Application Thread] org.example.ui.MainView - Creation d'album demarree
+2025-12-08 04:07:40.120 INFO  [JavaFX Application Thread] o.e.ui.service.PhotoLibraryService - PhotoLibraryService initialise sans contenu; en attente d'import ou de scan
+2025-12-08 04:07:40.339 INFO  [JavaFX Application Thread] org.example.ui.MainView - Grid rafraichie: aucun element (filtre=ALL, recherche='', bibliotheque vide=true)
+2025-12-08 04:07:41.085 INFO  [JavaFX Application Thread] org.example.app.PhotoGestionApp - UI principale initialisee (MainView)
+2025-12-08 04:07:48.069 INFO  [global-scan-task] org.example.infra.PhotoFileScanner - Scan termine: 3500 fichiers images dans C:\Users\nodig\Pictures
+2025-12-08 04:07:48.133 WARN  [global-scan-task] org.example.infra.PhotoFileScanner - Lecture ignoree pour C:\Users\nodig\Documents\Ma musique: C:\Users\nodig\Documents\Ma musique
+2025-12-08 04:07:48.135 WARN  [global-scan-task] org.example.infra.PhotoFileScanner - Lecture ignoree pour C:\Users\nodig\Documents\Mes images: C:\Users\nodig\Documents\Mes images
+2025-12-08 04:07:48.135 WARN  [global-scan-task] org.example.infra.PhotoFileScanner - Lecture ignoree pour C:\Users\nodig\Documents\Mes vidéos: C:\Users\nodig\Documents\Mes vidéos
+2025-12-08 04:07:49.043 INFO  [global-scan-task] org.example.infra.PhotoFileScanner - Scan termine: 146 fichiers images dans C:\Users\nodig\Documents
+2025-12-08 04:07:49.082 WARN  [JavaFX Application Thread] org.example.ui.MainView - Dossiers ignores pendant le scan: Dossiers ignores (acces limite): C:\Users\nodig\Documents\Ma musique, C:\Users\nodig\Documents\Mes images, C:\Users\nodig\Documents\Mes vidéos ... (+13)
+2025-12-08 04:07:57.712 INFO  [JavaFX Application Thread] o.e.ui.service.PhotoLibraryService - Ajout termine: 0 doublons ignores, taille finale 6
+2025-12-08 04:07:57.751 INFO  [JavaFX Application Thread] org.example.ui.MainView - Grid rafraichie: 6 elements (filtre=ALL, recherche='', page 1/1)
+2025-12-08 04:07:57.769 INFO  [JavaFX Application Thread] org.example.ui.MainView - Scan global termine: 6 ajouts, 0 doublons
+2025-12-08 04:08:35.011 INFO  [JavaFX Application Thread] org.example.ui.MainView - Creation d'album demarree
+2025-12-08 04:08:41.434 INFO  [JavaFX Application Thread] o.e.ui.service.PhotoLibraryService - Album 'souvenirs plage 2025' cree avec 6 photos
+2025-12-08 04:08:41.724 INFO  [JavaFX Application Thread] org.example.ui.MainView - Grid rafraichie: 6 elements (filtre=ALL, recherche='', page 1/1)
+2025-12-08 04:08:45.603 INFO  [JavaFX Application Thread] org.example.ui.MainView - Navigation vers ALBUMS
+2025-12-08 04:08:45.895 INFO  [JavaFX Application Thread] org.example.ui.MainView - Grille albums rafraichie: 8 albums (recherche='', page 1/1)
+2025-12-08 04:08:53.306 INFO  [JavaFX Application Thread] org.example.ui.MainView - Navigation vers ALBUMS
+2025-12-08 04:08:53.599 INFO  [JavaFX Application Thread] org.example.ui.MainView - Grille albums rafraichie: 8 albums (recherche='', page 1/1)
